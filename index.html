@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>PixelTime</title>
 <meta name="description" content="Çalıştığın her 25 dakika, gizli bir kuşun bir karesini açar. Tek başına ya da ekibinle çalış.">
-<meta name="theme-color" content="#eef1fd">
+<meta name="theme-color" content="#2f84cc">
 <meta name="color-scheme" content="only light">
 <meta name="darkreader-lock">
 <meta property="og:title" content="PixelTime">
@@ -15,20 +15,17 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+<link rel="preload" href="fonts/nunito-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
-<header class="top">
-  <a class="brand" href="#/" aria-label="PixelTime ana sayfa"><img src="favicon.svg" alt="" width="44" height="44"><span>Pixel<i>Time</i></span></a>
+<header class="top"><div class="wrap">
+  <a class="brand" href="#/" aria-label="PixelTime ana sayfa"><img src="logo.svg" alt="Dalda oturan Pixel" width="108" height="105"><span>Pixel<i>Time</i></span></a>
   <span class="grow"></span>
   <nav class="tabs" id="tabs" aria-label="Sayfalar"></nav>
-  <span id="sync" class="sync">Yerel mod</span>
-  <a class="me" id="me" href="#/profil" hidden></a>
-</header>
+  <div class="side"><span id="sync" class="sync">Yerel mod</span><a class="me" id="me" href="#/profil" hidden></a></div>
+</div></header>
 
 <main id="view"></main>
 
