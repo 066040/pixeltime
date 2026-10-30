@@ -8,6 +8,5 @@ window.PT_DATA = {
     'Kırşehir', 'Kocaeli', 'Konya', 'Kütahya', 'Malatya', 'Manisa', 'Mardin', 'Mersin', 'Muğla', 'Muş', 'Nevşehir',
     'Niğde', 'Ordu', 'Osmaniye', 'Rize', 'Sakarya', 'Samsun', 'Şanlıurfa', 'Siirt', 'Sinop', 'Şırnak', 'Sivas',
     'Tekirdağ', 'Tokat', 'Trabzon', 'Tunceli', 'Uşak', 'Van', 'Yalova', 'Yozgat', 'Zonguldak', 'Yurt dışı'],
-  exams: ['YKS', 'LGS', 'KPSS', 'TUS', 'DUS', 'ALES', 'YDS', 'Üniversite', 'Diğer'],
-  colors: ['#5f78b0', '#2f84cc', '#3fae49', '#f2c230', '#f08a3c', '#d8312c', '#e85a9b', '#8a5cc8', '#6b4a31', '#262a30']
+  exams: ['YKS', 'LGS', 'KPSS', 'TUS', 'DUS', 'ALES', 'YDS', 'Üniversite', 'Diğer']
 };

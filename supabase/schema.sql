@@ -21,6 +21,7 @@ create table if not exists public.profiles (
   nickname    text not null check (char_length(nickname) between 2 and 20),
   bird        text not null check (char_length(bird) between 2 and 40),
   color       text not null check (color ~ '^#[0-9a-fA-F]{6}$'),
+  color2      text check (color2 is null or color2 ~ '^#[0-9a-fA-F]{6}$'),
   exam        text check (exam is null or char_length(exam) <= 20),
   city        text check (city is null or char_length(city) <= 30),
   school      text check (school is null or char_length(school) <= 80),
@@ -28,6 +29,12 @@ create table if not exists public.profiles (
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
+
+-- Eski kurulumlar için: gradyan kenarlığın ikinci rengi
+alter table public.profiles add column if not exists color2 text check (color2 is null or color2 ~ '^#[0-9a-fA-F]{6}$');
+-- Pixel profil kuşu PixelTime Saat sahiplerine özel; saat doğrulaması gelene kadar kimse seçemez
+alter table public.profiles drop constraint if exists profiles_pixel_pro;
+alter table public.profiles add constraint profiles_pixel_pro check (bird <> 'pixel');
 
 -- Her satır = tamamlanmış 25 dakikalık bir blok (bir kare)
 create table if not exists public.blocks (
@@ -226,7 +233,7 @@ begin
   return jsonb_build_object(
     'team', to_jsonb(t),
     'members', coalesce((
-      select jsonb_agg(jsonb_build_object('id', p.id, 'nickname', p.nickname, 'bird', p.bird, 'color', p.color,
+      select jsonb_agg(jsonb_build_object('id', p.id, 'nickname', p.nickname, 'bird', p.bird, 'color', p.color, 'color2', p.color2,
                'count', (select count(*) from blocks x where x.team_id = t.id and x.user_id = p.id)) order by p.created_at)
       from profiles p where p.team_id = t.id), '[]'::jsonb),
     'opened', coalesce((
@@ -236,31 +243,33 @@ begin
 end $$;
 
 -- ---------- Sıralamalar ----------
--- p_scope: 'kisi' | 'okul' | 'sehir' | 'ekip'
-create or replace function public.leaderboard(p_scope text, p_since timestamptz)
-returns table (label text, sub text, bird text, color text, total bigint)
+-- p_scope: 'kisi' | 'okul' | 'sehir' | 'ekip' · p_exam: null ya da 'YKS', 'TUS'...
+drop function if exists public.leaderboard(text, timestamptz);
+drop function if exists public.leaderboard(text, timestamptz, text);
+create or replace function public.leaderboard(p_scope text, p_since timestamptz, p_exam text default null)
+returns table (label text, sub text, bird text, color text, color2 text, total bigint)
 language sql stable security definer set search_path = public as $$
   select * from (
-    select p.nickname, coalesce(p.city, ''), p.bird, p.color, count(*)
+    select p.nickname, coalesce(p.city, ''), p.bird, p.color, p.color2, count(*)
       from blocks b join profiles p on p.id = b.user_id
-      where p_scope = 'kisi' and b.started_at >= p_since
-      group by p.id, p.nickname, p.city, p.bird, p.color
+      where p_scope = 'kisi' and b.started_at >= p_since and (p_exam is null or p.exam = p_exam)
+      group by p.id, p.nickname, p.city, p.bird, p.color, p.color2
     union all
-    select min(trim(p.school)), min(coalesce(p.city, '')), null, null, count(*)
+    select min(trim(p.school)), min(coalesce(p.city, '')), null, null, null, count(*)
       from blocks b join profiles p on p.id = b.user_id
-      where p_scope = 'okul' and b.started_at >= p_since and nullif(trim(p.school), '') is not null
+      where p_scope = 'okul' and b.started_at >= p_since and nullif(trim(p.school), '') is not null and (p_exam is null or p.exam = p_exam)
       group by lower(trim(p.school))
     union all
-    select p.city, null, null, null, count(*)
+    select p.city, null, null, null, null, count(*)
       from blocks b join profiles p on p.id = b.user_id
-      where p_scope = 'sehir' and b.started_at >= p_since and p.city is not null
+      where p_scope = 'sehir' and b.started_at >= p_since and p.city is not null and (p_exam is null or p.exam = p_exam)
       group by p.city
     union all
-    select t.name, t.size || ' kişi', null, null, count(*)
+    select t.name, t.size || ' kişi', null, null, null, count(*)
       from blocks b join teams t on t.id = b.team_id
       where p_scope = 'ekip' and b.started_at >= p_since
       group by t.id, t.name, t.size
-  ) r (label, sub, bird, color, total)
+  ) r (label, sub, bird, color, color2, total)
   order by total desc, label
   limit 50;
 $$;
@@ -271,10 +280,10 @@ revoke all on function public.create_team(text, int) from public;
 revoke all on function public.join_team(text) from public;
 revoke all on function public.leave_team() from public;
 revoke all on function public.team_state(uuid) from public;
-revoke all on function public.leaderboard(text, timestamptz) from public;
+revoke all on function public.leaderboard(text, timestamptz, text) from public;
 grant execute on function public.record_blocks(jsonb) to authenticated;
 grant execute on function public.create_team(text, int) to authenticated;
 grant execute on function public.join_team(text) to authenticated;
 grant execute on function public.leave_team() to authenticated;
 grant execute on function public.team_state(uuid) to authenticated;
-grant execute on function public.leaderboard(text, timestamptz) to authenticated;
+grant execute on function public.leaderboard(text, timestamptz, text) to authenticated;

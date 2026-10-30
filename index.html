@@ -3,45 +3,40 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>PixelTime - Çalış, Pixel'i ortaya çıkar!</title>
-<meta name="description" content="Çalıştığın her 25 dakika, Pixel'den bir kare. Tek başına ya da ekibinle çalış, Pixel'i ortaya çıkar.">
-<meta name="theme-color" content="#2f84cc">
+<title>PixelTime</title>
+<meta name="description" content="Kesintisiz geçen her 25 dakika, gizli bir kuş portresinin bir karesini açar. YKS, TUS ve tüm sınavlar için odak takibi.">
+<meta name="theme-color" content="#f3efe6">
 <meta name="color-scheme" content="only light">
 <meta name="darkreader-lock">
-<meta property="og:title" content="PixelTime - Çalış, Pixel'i ortaya çıkar!">
-<meta property="og:description" content="Çalıştığın her 25 dakika, Pixel'den bir kare.">
+<meta property="og:title" content="PixelTime">
+<meta property="og:description" content="Kesintisiz geçen her 25 dakika, gizli bir kuş portresinin bir karesini açar.">
 <meta property="og:image" content="icon-512.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preload" href="fonts/newsreader-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<div id="page">
-  <header class="masthead">
-    <a class="brand" href="#/" aria-label="PixelTime ana sayfa">
-      <img src="logo.svg" alt="Dalda oturan Pixel" width="104" height="101">
-      <span>Pixel<b>Time</b></span>
-    </a>
-    <div class="beta">BETA!</div>
-    <div class="hello" id="hello"><div><strong>Çalış, Pixel'i ortaya çıkar!</strong><small>Her 25 dakika, Pixel'den bir kare.</small></div></div>
-  </header>
+<a class="skip" href="#view">İçeriğe geç</a>
+<div class="testbar" id="testbar" hidden></div>
+<header class="top"><div class="wrap">
+  <a class="brand" href="#/" aria-label="PixelTime ana sayfa"><img src="img/pixel-logo-kucuk.svg" alt="" width="44" height="43"><span>PixelTime</span></a>
+  <nav class="tabs" id="tabs" aria-label="Sayfalar"></nav>
+  <div class="side"><span id="sync" class="sync"></span><a class="me" id="me" href="#/profil" hidden></a></div>
+</div></header>
 
-  <nav class="tabs" id="tabs">
-    <a href="#/" data-r="calis">Çalış</a>
-    <a href="#/ekip" data-r="ekip">Ekibim</a>
-    <a href="#/siralama" data-r="siralama">Sıralama</a>
-    <a href="#/profil" data-r="profil">Profilim</a>
-    <span id="sync" class="sync local">Yerel mod</span>
-  </nav>
+<main id="view" tabindex="-1"></main>
 
-  <main id="view" class="view"></main>
-</div>
-<footer>
-  <img src="favicon.svg" alt="">© 2026 PixelTime · <a href="#/pixel">Pixel'in anısına</a>
-  <span class="best">Chrome ve Firefox'ta en iyi görünür</span>
-</footer>
+<footer class="foot"><div class="wrap">
+  <a href="#/pixel">Pixel'in anısına</a>
+  <span>Instagram hesabımız yakında</span>
+  <span>© 2026 PixelTime</span>
+</div></footer>
+
+<nav class="bnav" id="bnav" aria-label="Sayfalar"></nav>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <div id="modal" class="modal" hidden></div>
 
