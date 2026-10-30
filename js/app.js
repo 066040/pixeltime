@@ -68,6 +68,7 @@
     profil: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4c-4 0-7 3-7 7v2l-3 3h6"/><path d="M14 4c3 0 6 2.5 6 6.5 0 5-4 9.5-9 9.5"/><circle cx="14.5" cy="9" r="1" fill="currentColor"/></svg>'
   };
   var TABS = [['calis', '#/', 'Çalış'], ['ekip', '#/ekip', 'Ekibim'], ['siralama', '#/siralama', 'Sıralama'], ['profil', '#/profil', 'Profilim']];
+  document.querySelector('.brand img').src = 'favicon.svg';
   $('tabs').innerHTML = $('bnav').innerHTML = TABS.map(function (t) { return '<a href="' + t[1] + '" data-r="' + t[0] + '">' + ICON[t[0]] + '<span>' + t[2] + '</span></a>'; }).join('');
 
   /* ================= Gökyüzü: günlük hedefe göre geceden şafağa ================= */
@@ -76,14 +77,7 @@
     var r = Math.round((x >> 16) + ((y >> 16) - (x >> 16)) * t), g = Math.round(((x >> 8) & 255) + (((y >> 8) & 255) - ((x >> 8) & 255)) * t), bl = Math.round((x & 255) + ((y & 255) - (x & 255)) * t);
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1);
   }
-  function paintSky() {
-    var p = Math.min(1, st.profile ? todayCount() / (st.goal || 8) : 0), s = document.documentElement.style;
-    s.setProperty('--sky-top', mix('#16183a', '#3a2f7a', p));
-    s.setProperty('--sky-mid', mix('#1f2150', '#8a4a8a', p));
-    s.setProperty('--sky-bot', mix('#2d2b6a', '#ff8f6b', Math.pow(p, 1.3)));
-    s.setProperty('--stars', String(1 - p * 0.9));
-    s.setProperty('--sun-y', (115 - p * 55) + '%');
-  }
+  function paintSky() { /* ferah tasarımda arka plan sabit */ }
 
   /* ================= Kuş resimleri ve tuval ================= */
   var imgs = {}, fullCache = {};
@@ -178,7 +172,7 @@
     if (P0.opened < CELLS) flash(P0.opened);
     if (st.teamState) st.teamState.opened.push(me());
     var P = personal();
-    if (before < st.goal && todayCount() >= st.goal) setTimeout(function () { toast('Günlük hedefine ulaştın! Güneş doğdu ☀️', 'good', 5000); }, 1600);
+    if (before < st.goal && todayCount() >= st.goal) setTimeout(function () { toast('Günlük hedefine ulaştın, harikasın!', 'good', 5000); }, 1600);
     paintSky();
     return P;
   }
@@ -383,9 +377,10 @@
   /* ---------- Çalış ---------- */
   function greet() {
     var h = new Date().getHours(), n = todayCount(), g = st.goal;
-    if (n >= g) return 'Güneş doğdu. Bugünkü hedefin tamam.';
-    if (n === 0) return h < 6 ? 'Gece kuşu musun? İlk kareyi aç.' : h < 12 ? 'Günaydın. Gökyüzü hâlâ karanlık, ilk kareyi aç.' : h < 18 ? 'Gökyüzü seni bekliyor. İlk kareyi aç.' : 'Akşam çalışması başlasın. İlk kareyi aç.';
-    return 'Güneşin doğmasına ' + (g - n) + ' kare kaldı.';
+    var name = st.profile ? st.profile.nickname : '';
+    if (n >= g) return 'Bugünkü hedefin tamam, ' + name + '.';
+    if (n === 0) return (h < 6 ? 'Gece kuşu musun, ' : h < 12 ? 'Günaydın, ' : h < 18 ? 'Merhaba, ' : 'İyi akşamlar, ') + name + '.';
+    return 'Hedefine ' + (g - n) + ' kare kaldı.';
   }
   function renderWork() {
     var P = personal();
@@ -474,10 +469,10 @@
       var code = st.pendingJoin || '';
       v.innerHTML = '<h1 class="h1">Ekibim</h1><p class="lead">Arkadaşlarınla tek bir büyük tuvali birlikte aç.</p>' +
         '<div class="section grid2">' +
-        '<div class="panel light form"><h2 style="font:700 21px var(--display)">Ekibe katıl</h2>' +
+        '<div class="panel form"><h2 style="font:600 22px var(--display)">Ekibe katıl</h2>' +
         '<label for="tCode">Davet kodu</label><input type="text" id="tCode" maxlength="6" value="' + esc(code) + '" placeholder="Örneğin G3JN49" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:4px;font-weight:700">' +
         '<button class="btn go" id="tJoin">Ekibe katıl</button><p class="muted small" style="margin-top:10px">Kodu ekibi kuran arkadaşından al. Aynı anda bir ekipte olabilirsin.</p></div>' +
-        '<div class="panel form"><h2 style="font:700 21px var(--display)">Ekip kur</h2>' + teamHowTo() +
+        '<div class="panel tint form"><h2 style="font:600 22px var(--display)">Ekip kur</h2>' + teamHowTo() +
         '<label for="tName">Ekip adı</label><input type="text" id="tName" maxlength="30" placeholder="Örneğin Gece Kuşları">' +
         '<label for="tSize">Kaç kişisiniz?</label><select id="tSize">' + [2, 3, 4, 5, 6, 7, 8, 9, 10].map(function (n) { return '<option' + (n === 4 ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select>' +
         '<p class="muted small" id="tCalc" style="margin-top:8px"></p><button class="btn line" id="tCreate">Ekibi kur</button></div></div>';
@@ -570,7 +565,7 @@
     $('view').innerHTML =
       (first ? '<h1 class="h1">Çalıştıkça bir kuş ortaya çıkar.</h1><p class="lead">Her 25 dakikalık odak, gizli bir kuşun bir karesini açar. İlk kuş Pixel. Başlamak için kendine bir takma ad ve bir kuş seç.</p>'
         : '<h1 class="h1">Profilim</h1>') +
-      '<div class="section grid2"><div class="panel light form">' +
+      '<div class="section grid2"><div class="panel form">' +
       '<label for="fNick" style="margin-top:0">Takma ad <small>(gerçek adın gerekmez)</small></label><input type="text" id="fNick" maxlength="20" value="' + esc(p.nickname) + '" placeholder="Örneğin Mühendis" autocomplete="off">' +
       '<label>Kuşun</label><div class="birds" id="fBirds">' + BIRDS.list.map(function (b) {
         return '<button type="button" data-b="' + b.id + '"' + (b.id === p.bird ? ' class="on"' : '') + ' aria-label="' + esc(b.name) + '">' + BIRDS.svg(b.id) + esc(b.name) + '</button>';
@@ -583,7 +578,7 @@
       '<div class="row2"><div><label for="fCity">Şehir <small>(isteğe bağlı)</small></label><select id="fCity"><option value="">Seçmedim</option>' + DATA.cities.map(function (x) { return '<option' + (x === p.city ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
       '<div><label for="fSchool">Okul <small>(isteğe bağlı)</small></label><input type="text" id="fSchool" maxlength="80" value="' + esc(p.school) + '" placeholder="Örneğin Ankara Fen Lisesi"></div></div>' +
       '<label for="fGoal">Günlük hedefin</label><select id="fGoal">' + GOALS.map(function (g) { return '<option value="' + g + '"' + (g === st.goal ? ' selected' : '') + '>' + g + ' kare, yaklaşık ' + hours(g) + ' saat</option>'; }).join('') + '</select>' +
-      '<p class="muted small" style="margin-top:8px">Hedefine yaklaştıkça gökyüzü aydınlanır, hedefe ulaşınca güneş doğar.</p>' +
+      '<p class="muted small" style="margin-top:8px">Ana sayfadaki noktalar hedefine ne kadar kaldığını gösterir.</p>' +
       '<button class="btn dark" id="fSave">' + (first ? 'Başla' : 'Değişiklikleri kaydet') + '</button>' +
       (first && SERVER ? '<p class="muted small" style="margin-top:14px;text-align:center">Başka bir cihazda hesabın var mı? <a href="#" id="fLogin" style="color:var(--night);font-weight:600">E-postanla giriş yap</a></p>' : '') +
       '</div><div>' + (first ? intro() : statsBlock() + collectionBlock() + accountBlock()) + '</div></div>';
@@ -623,7 +618,7 @@
     prev();
   }
   function intro() {
-    return '<div class="panel"><h2 style="font:700 21px var(--display);margin-bottom:10px">Nasıl çalışır?</h2>' +
+    return '<div class="panel tint"><h2 style="font:600 22px var(--display);margin-bottom:10px">Nasıl çalışır?</h2>' +
       '<ul class="list"><li><div class="name"><b>25 dakika = 1 kare</b><small>Pomodoro ya da kronometreyle çalış. Her 25 dakika gizli kuşun bir karesini açar.</small></div></li>' +
       '<li><div class="name"><b>Telefonu bırak</b><small>Çalışırken uygulamadan çıkarsan Pixel kaçar, o kare açılmaz.</small></div></li>' +
       '<li><div class="name"><b>Kuş koleksiyonu</b><small>Bir tuvali bitirince kuş koleksiyonuna girer, sıradaki gizli kuş açılır.</small></div></li>' +
@@ -683,7 +678,7 @@
   /* ---------- Pixel'i tanı ---------- */
   function renderPixel() {
     $('view').innerHTML = '<div class="grid2" style="align-items:center"><div class="window">' + BIRDS.svg('pixel', { scene: true }) + '</div>' +
-      '<div><h1 class="h1">Pixel</h1><p class="lead" style="margin-top:10px">PixelTime adını, sahibinin gri muhabbet kuşu Pixel\'den alıyor. Her yeni kullanıcının ilk tuvalinde ortaya çıkan kuş o.</p>' +
+      '<div><h1 class="h1">Pixel</h1><p class="lead" style="margin-top:10px">PixelTime adını, sahibinin gri muhabbet kuşu Pixel\'den alıyor. Beyaz yüzü, başındaki ince çizgileri ve mavi yanağıyla herkesin ilk tuvalinde ortaya çıkan kuş o.</p>' +
       '<p class="lead" style="margin-top:10px">Burada açılan her kare, onu biraz daha görünür kılıyor.</p><a class="btn go" href="#/" style="max-width:280px;margin-top:20px">Çalışmaya dön</a></div></div>';
   }
 
@@ -691,36 +686,33 @@
   function seasonCard() {
     var p = st.profile; if (!p) return;
     var s = stats(), W = 1080, H = 1920, c = document.createElement('canvas'); c.width = W; c.height = H;
-    var g = c.getContext('2d'), FD = '"Bricolage Grotesque",system-ui,sans-serif', FB = 'Onest,system-ui,sans-serif';
-    var bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#16183a'); bg.addColorStop(0.55, '#3a2f7a'); bg.addColorStop(0.85, '#c8607a'); bg.addColorStop(1, '#ff8f6b');
+    var g = c.getContext('2d'), FD = 'Fredoka,system-ui,sans-serif', FB = '"DM Sans",system-ui,sans-serif';
+    var bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#e3eafc'); bg.addColorStop(0.6, '#eeebff'); bg.addColorStop(1, '#fdeceb');
     g.fillStyle = bg; g.fillRect(0, 0, W, H);
-    for (var i = 0; i < 70; i++) { g.fillStyle = 'rgba(255,255,255,' + (0.3 + (i % 5) * 0.12) + ')'; var sx = (hashStr('x' + i) % W), sy = (hashStr('y' + i) % 900); g.beginPath(); g.arc(sx, sy, 1.5 + (i % 3), 0, 7); g.fill(); }
-    var sun = g.createRadialGradient(W / 2, H + 120, 40, W / 2, H + 120, 760); sun.addColorStop(0, 'rgba(255,211,110,1)'); sun.addColorStop(0.35, 'rgba(255,143,107,.55)'); sun.addColorStop(1, 'rgba(255,143,107,0)');
-    g.fillStyle = sun; g.fillRect(0, 0, W, H);
-    g.textAlign = 'left'; g.fillStyle = '#f4f2ff';
+    g.textAlign = 'left'; g.fillStyle = '#23253a';
     g.font = '800 64px ' + FD; g.fillText('PixelTime', 90, 150);
-    g.font = '500 36px ' + FB; g.fillStyle = '#b9b4f0'; g.fillText('Sezon ' + SEASON + ' kartım', 90, 205);
+    g.font = '500 36px ' + FB; g.fillStyle = '#6b6f88'; g.fillText('Sezon ' + SEASON + ' kartım', 90, 205);
     var a = new Image(), done = 0, birdImg = new Image();
     function draw() {
       if (++done < 2) return;
-      g.save(); g.beginPath(); g.arc(W - 200, 160, 110, 0, 7); g.closePath(); g.fillStyle = '#e9ecf6'; g.fill(); g.lineWidth = 12; g.strokeStyle = p.color; g.stroke(); g.clip();
+      g.save(); g.beginPath(); g.arc(W - 200, 160, 110, 0, 7); g.closePath(); g.fillStyle = '#ffffff'; g.fill(); g.lineWidth = 12; g.strokeStyle = p.color; g.stroke(); g.clip();
       g.drawImage(a, W - 310, 50, 220, 220); g.restore();
-      g.fillStyle = '#f4f2ff'; g.font = '800 120px ' + FD; g.fillText(p.nickname, 90, 420);
-      g.font = '500 38px ' + FB; g.fillStyle = '#b9b4f0'; g.fillText([p.exam, p.city, p.school].filter(Boolean).join(', ') || birdName(p.bird), 90, 480);
+      g.fillStyle = '#23253a'; g.font = '600 116px ' + FD; g.fillText(p.nickname, 90, 420);
+      g.font = '500 38px ' + FB; g.fillStyle = '#6b6f88'; g.fillText([p.exam, p.city, p.school].filter(Boolean).join(', ') || birdName(p.bird), 90, 480);
       var rows = [[s.total, 'kare açtım'], [s.hours, 'saat odaklandım'], [s.streak, 'gün üst üste'], [s.birds, 'kuş topladım']];
       rows.forEach(function (r, i) {
         var x = 90 + (i % 2) * 460, y = 580 + Math.floor(i / 2) * 260;
-        g.fillStyle = 'rgba(255,255,255,.08)'; rr(g, x, y, 440, 230, 40); g.fill();
-        g.fillStyle = i === 0 ? '#ffd36e' : '#f4f2ff'; g.font = '800 120px ' + FD; g.fillText(String(r[0]), x + 40, y + 140);
-        g.fillStyle = '#b9b4f0'; g.font = '500 34px ' + FB; g.fillText(r[1], x + 44, y + 195);
+        g.fillStyle = ['#ffffff', '#fff4d6', '#fdeceb', '#e2f5ed'][i]; rr(g, x, y, 440, 230, 40); g.fill();
+        g.fillStyle = '#23253a'; g.font = '600 116px ' + FD; g.fillText(String(r[0]), x + 40, y + 140);
+        g.fillStyle = '#6b6f88'; g.font = '500 34px ' + FB; g.fillText(r[1], x + 44, y + 195);
       });
       var P = personal(), mini = document.createElement('canvas');
       drawCanvas(mini, N, P.opened, P.seed, P.bird);
       g.save(); rr(g, 90, 1130, 520, 520, 44); g.clip(); g.drawImage(mini, 90, 1130, 520, 520); g.restore();
-      g.fillStyle = '#f4f2ff'; g.font = '700 46px ' + FD;
+      g.fillStyle = '#23253a'; g.font = '600 46px ' + FD;
       wrap(P.full ? birdName(P.bird) + ' ortaya çıktı.' : 'Gizli kuşun %' + Math.round(P.opened / CELLS * 100) + '\'i açıldı.', 650, 1200, 340, 56);
-      g.fillStyle = '#ffe7ae'; g.font = '500 34px ' + FB; wrap(st.team ? st.team.name + ' ekibiyle çalışıyorum.' : 'Sen de katıl, birlikte çalışalım.', 650, 1420, 340, 44);
-      g.fillStyle = '#2a1408'; g.font = '600 36px ' + FB; g.textAlign = 'center';
+      g.fillStyle = '#5f7fcf'; g.font = '500 34px ' + FB; wrap(st.team ? st.team.name + ' ekibiyle çalışıyorum.' : 'Sen de katıl, birlikte çalışalım.', 650, 1420, 340, 44);
+      g.fillStyle = '#6b6f88'; g.font = '500 34px ' + FB; g.textAlign = 'center';
       g.fillText(location.host + location.pathname.replace(/index\.html$/, ''), W / 2, H - 90);
       showCard(c);
     }

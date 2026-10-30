@@ -1,5 +1,5 @@
 /* İnternetsiz çalışabilmek için dosyaları telefonda saklar */
-var CACHE = 'pixeltime-v5';
+var CACHE = 'pixeltime-v6';
 var FILES = ['./', 'index.html', 'css/style.css', 'js/config.js', 'js/data.js', 'js/birds.js', 'js/app.js', 'logo.svg', 'favicon.svg', 'favicon-32.png',
   'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'manifest.webmanifest'];
 
