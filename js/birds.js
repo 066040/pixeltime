@@ -312,5 +312,140 @@
   }
 
   var WIKI = {"muhabbet-yesil": "Budgerigar", "muhabbet-mavi": "Budgerigar", "muhabbet-sari": "Budgerigar", "muhabbet-beyaz": "Budgerigar", "muhabbet-mor": "Budgerigar", "sultan": "Cockatiel", "sultan-beyaz": "Cockatiel", "kanarya": "Domestic_canary", "kanarya-kirmizi": "Domestic_canary", "zebra": "Zebra_finch", "jako": "Grey_parrot", "ara-kirmizi": "Scarlet_macaw", "ara-mavi": "Blue-and-yellow_macaw", "sumbul-ara": "Hyacinth_macaw", "kakadu": "Sulphur-crested_cockatoo", "pembe-kakadu": "Galah", "amazon": "Turquoise-fronted_amazon", "eclectus": "Moluccan_eclectus", "gunes-konuru": "Sun_parakeet", "quaker": "Monk_parakeet", "lori": "Rainbow_lorikeet", "cennet": "Rosy-faced_lovebird", "rosella": "Eastern_rosella", "kea": "Kea", "karga": "Hooded_crow", "saksagan": "Eurasian_magpie", "alakarga": "Eurasian_jay", "mavi-alakarga": "Blue_jay", "kartal": "Golden_eagle", "sahin": "Long-legged_buzzard", "kerkenez": "Common_kestrel", "baykus": "Eurasian_eagle-owl", "kar-baykusu": "Snowy_owl", "peceli-baykus": "Barn_owl", "serce": "House_sparrow", "kirlangic": "Barn_swallow", "kizilgerdan": "European_robin", "karatavuk": "Common_blackbird", "bulbul": "Common_nightingale", "saka": "European_goldfinch", "kardinal": "Northern_cardinal", "agackakan": "Great_spotted_woodpecker", "yalicapkini": "Common_kingfisher", "arikusu": "European_bee-eater", "ibibik": "Eurasian_hoopoe", "kolibri": "Ruby-throated_hummingbird", "tukan": "Toco_toucan", "guvercin": "Rock_dove", "marti": "Yellow-legged_gull", "deniz-papagani": "Atlantic_puffin", "penguen": "Emperor_penguin", "flamingo": "Greater_flamingo", "leylek": "White_stork", "balikcil": "Grey_heron", "tavus": "Indian_peafowl", "yesilbas": "Mallard", "kugu": "Mute_swan", "horoz": "Chicken"};
-  root.PT_BIRDS = { wiki: WIKI, logo: logoSVG, list: BIRDS.filter(function (x) { return !x.hidden; }), all: BIRDS, svg: birdSVG, get: byId };
+
+  /* ---------- Ek türler ----------
+     [id, Türkçe ad, Wikipedia başlığı, kategori, çizim tabanı (benzer tür), isteğe bağlı renk değişiklikleri]
+     Fotoğraflar Wikipedia'dan gelir; çizim yalnızca fotoğraf yüklenemezse görünür. */
+  var EXTRA = [
+    /* Papağanlar */
+    ['fischer', 'Fischer cennet papağanı', "Fischer's_lovebird", 'papagan', 'cennet', { head: '#f08a3c', crown: '#f08a3c' }],
+    ['yakali-papagan', 'Yakalı yeşil papağan', 'Rose-ringed_parakeet', 'papagan', 'quaker', { belly: '#8fd257', face: '#7ccc54', beak: '#d8312c' }],
+    ['iskender', 'İskender papağanı', 'Alexandrine_parakeet', 'papagan', 'quaker', { belly: '#8fd257', face: '#7ccc54', beak: '#d8312c', patch: '#a83a3a' }],
+    ['senegal', 'Senegal papağanı', 'Senegal_parrot', 'papagan', 'amazon', { head: '#5a5f66', crown: '#5a5f66', belly: '#f2b030' }],
+    ['kaik', 'Kaik papağanı', 'Black-headed_parrot', 'papagan', 'amazon', { head: '#1f2126', crown: '#1f2126', belly: '#f4efe6' }],
+    ['yesil-yanak', 'Yeşil yanaklı konur', 'Green-cheeked_parakeet', 'papagan', 'quaker', { tail: '#a8322c' }],
+    ['jandaya', 'Jandaya konuru', 'Jandaya_parakeet', 'papagan', 'gunes-konuru', { body: '#e8622a', wing: '#3e9a34' }],
+    ['kakapo', 'Kakapo', 'Kākāpō', 'papagan', 'kea', { body: '#8aa040', head: '#a6b058' }],
+    ['pasifik', 'Pasifik serçe papağanı', 'Pacific_parrotlet', 'papagan', 'cennet', { head: '#6cc04a', crown: '#6cc04a' }],
+    ['askeri-ara', 'Askeri ara', 'Military_macaw', 'papagan', 'ara-mavi', { body: '#5aa040', belly: '#5aa040', head: '#5aa040', crown: '#d8312c' }],
+    ['yesil-kanat-ara', 'Yeşil kanatlı ara', 'Red-and-green_macaw', 'papagan', 'ara-kirmizi', { patC: '#3aa04a' }],
+    ['moluk-kakadu', 'Moluk kakadusu', 'Salmon-crested_cockatoo', 'papagan', 'kakadu', { body: '#f8e2dc', crestC: '#f2907a' }],
+    ['goffin', 'Goffin kakadusu', 'Tanimbar_corella', 'papagan', 'kakadu', { crestC: '#f6f6f2' }],
+    ['kara-kakadu', 'Kara kakadu', 'Red-tailed_black_cockatoo', 'papagan', 'kakadu', { body: '#1f2126', belly: '#24262b', head: '#1f2126', crown: '#1f2126', wing: '#1a1c20', prim: '#141518', tail: '#d8312c', crestC: '#1f2126', beak: '#5a5f66' }],
+    ['kral-papagan', 'Kral papağanı', 'Australian_king_parrot', 'papagan', 'amazon', { head: '#d8312c', crown: '#d8312c', belly: '#d8312c' }],
+    ['burke', 'Burke papağanı', "Bourke's_parrot", 'papagan', 'muhabbet-yesil', { body: '#c89a8a', belly: '#e8a6b6', head: '#d8b0a8', crown: '#d8b0a8', wing: '#8a6a5a', headPat: null, spots: false }],
+    ['kirmizi-lori', 'Kırmızı lori', 'Red_lory', 'papagan', 'lori', { body: '#d8312c', belly: '#d8312c', head: '#d8312c', crown: '#d8312c', wing: '#c42a26' }],
+    ['pionus', 'Mavi başlı pionus', 'Blue-headed_parrot', 'papagan', 'amazon', { head: '#2a5cc0', crown: '#2a5cc0' }],
+    ['meyer', 'Meyer papağanı', "Meyer's_parrot", 'papagan', 'amazon', { head: '#7a6a58', crown: '#f2c230', wing: '#6a5a48' }],
+    ['katarina', 'Katarina papağanı', 'Barred_parakeet', 'papagan', 'quaker', { face: '#7ccc54' }],
+    ['yelpaze', 'Yelpaze papağanı', 'Red-fan_parrot', 'papagan', 'amazon', { head: '#b49870', crown: '#b49870', belly: '#3a5ab0' }],
+    ['hint-yuzuk', 'Mavi taçlı asma papağanı', 'Blue-crowned_hanging_parrot', 'papagan', 'cennet', { head: '#5cb848', crown: '#2a5cc0' }],
+
+    /* Ötücüler ve küçük kuşlar */
+    ['florya', 'Florya', 'European_greenfinch', 'otucu', 'kanarya', { body: '#8aa848', belly: '#b8c860', head: '#8aa848', wing: '#6a8a38' }],
+    ['iskete', 'İskete', 'Eurasian_siskin', 'otucu', 'kanarya', { body: '#c8d04a', belly: '#e8e8a0', crown: '#1a1a1a', wing: '#2a2a2a' }],
+    ['ispinoz', 'İspinoz', 'Common_chaffinch', 'otucu', 'serce', { belly: '#d89a88', head: '#6a8aa8', crown: '#6a8aa8' }],
+    ['kocabas', 'Kocabaş', 'Hawfinch', 'otucu', 'serce', { body: '#c8865a', head: '#d89a62', beak: '#9aa0a8' }],
+    ['sigircik', 'Sığırcık', 'Common_starling', 'otucu', 'karatavuk', { pat: 'spots', patC: '#f2efe8', sheen: '#5a7a5a', beak: '#f2c230' }],
+    ['mavi-bastankara', 'Mavi baştankara', 'Eurasian_blue_tit', 'otucu', 'kanarya', { belly: '#f2d43a', head: '#ffffff', crown: '#2f8fd8', wing: '#3a7ad8', beak: '#2a2a2a' }],
+    ['buyuk-bastankara', 'Büyük baştankara', 'Great_tit', 'otucu', 'kanarya', { body: '#8aa858', belly: '#f2d43a', head: '#1a1a1a', crown: '#1a1a1a', wing: '#5a7a8a', beak: '#2a2a2a' }],
+    ['tarlakusu', 'Tarlakuşu', 'Eurasian_skylark', 'otucu', 'serce', { head: '#a9825a', bib: null }],
+    ['ardic', 'Öter ardıç', 'Song_thrush', 'otucu', 'bulbul', { belly: '#f2e6d0', pat: 'spots' }],
+    ['citkusu', 'Çitkuşu', 'Eurasian_wren', 'otucu', 'bulbul', { body: '#8a5a3a', tailLen: 14 }],
+    ['kuyruksallayan', 'Ak kuyruksallayan', 'White_wagtail', 'otucu', 'saksagan', { body: '#8a9098', head: '#ffffff', crown: '#1a1a1a' }],
+    ['mavi-ardic', 'Doğu mavi ardıcı', 'Eastern_bluebird', 'otucu', 'kizilgerdan', { body: '#3a7ad8', head: '#3a7ad8', wing: '#2f6ac8' }],
+    ['amerikan-saka', 'Amerikan sakası', 'American_goldfinch', 'otucu', 'kanarya', { crown: '#1a1a1a', wing: '#1a1a1a' }],
+    ['gouldian', 'Gouldian ispinozu', 'Gouldian_finch', 'otucu', 'zebra', { body: '#3fae49', belly: '#f2d43a', head: '#d8312c', bib: '#8a5cc8', wing: '#3fae49', pat: 'plain' }],
+    ['pirinc-kusu', 'Pirinç kuşu', 'Java_sparrow', 'otucu', 'zebra', { body: '#7a8494', head: '#1a1a1a', cheek: '#ffffff', pat: 'plain' }],
+    ['cennet-kusu', 'Büyük cennet kuşu', 'Greater_bird-of-paradise', 'otucu', 'karatavuk', { body: '#7a4a2a', head: '#f2d43a', bib: '#2a8a5a', tail: '#f2b030', tailLen: 40 }],
+    ['lir-kusu', 'Lir kuşu', 'Superb_lyrebird', 'otucu', 'bulbul', { body: '#7a6a5a', tailLen: 44 }],
+    ['kuzgun', 'Kuzgun', 'Common_raven', 'otucu', 'karga', { body: '#16171a', head: '#16171a', belly: '#1c1d20' }],
+    ['kucuk-karga', 'Küçük karga', 'Western_jackdaw', 'otucu', 'karga', { head: '#6a7078', iris: '#e8eef4' }],
+    ['ekin-kargasi', 'Ekin kargası', 'Rook_(bird)', 'otucu', 'karga', { beak: '#c8c4bc' }],
+    ['mavigerdan', 'Mavigerdan', 'Bluethroat', 'otucu', 'kizilgerdan', { bib: '#2f6ac8', face: '#8d7558' }],
+    ['kizilkuyruk', 'Kızılkuyruk', 'Common_redstart', 'otucu', 'kizilgerdan', { body: '#7a8494', head: '#7a8494', bib: '#1a1a1a', belly: '#ea742c', tail: '#d85a2a' }],
+    ['sariasma', 'Sarıasma', 'Eurasian_golden_oriole', 'otucu', 'kanarya', { wing: '#1a1a1a', prim: '#141414', tail: '#1a1a1a', beak: '#d8586a' }],
+    ['kuyrukkakan', 'Kuyrukkakan', 'Northern_wheatear', 'otucu', 'kizilgerdan', { body: '#9aa2ac', head: '#9aa2ac', bib: '#f2e0c8', wing: '#1a1a1a', mask: '#1a1a1a' }],
+    ['alayci-kus', 'Alaycı kuş', 'Northern_mockingbird', 'otucu', 'bulbul', { body: '#8a9098', belly: '#eceef0', wing: '#5a6068' }],
+    ['ipekkuyruk', 'İpekkuyruk', 'Bohemian_waxwing', 'otucu', 'kardinal', { body: '#b89a84', belly: '#c8b0a0', head: '#c8a088', crestC: '#c8a088', wing: '#6a6068', beak: '#1a1a1a' }],
+    ['tepeli-toygar', 'Tepeli toygar', 'Crested_lark', 'otucu', 'serce', { head: '#a9825a', crown: '#7a5232', bib: null }],
+    ['kirmizi-tanager', 'Kızıl tanager', 'Scarlet_tanager', 'otucu', 'kardinal', { wing: '#1a1a1a', prim: '#141414', tail: '#1a1a1a', crest: null }],
+    ['peri-citkusu', 'Mavi peri çitkuşu', 'Superb_fairywren', 'otucu', 'bulbul', { head: '#3ab0e8', body: '#2a4a8a', tail: '#2a4a8a' }],
+
+    /* Yırtıcılar ve baykuşlar */
+    ['kel-kartal', 'Kel kartal', 'Bald_eagle', 'yirtici', 'kartal', {}],
+    ['gokdogan', 'Gökdoğan', 'Peregrine_falcon', 'yirtici', 'kerkenez', { body: '#5a6474', head: '#2a3038', crown: '#2a3038', belly: '#eeeae0', wing: '#5a6474' }],
+    ['ulu-dogan', 'Ulu doğan', 'Saker_falcon', 'yirtici', 'sahin', {}],
+    ['atmaca', 'Atmaca', 'Eurasian_sparrowhawk', 'yirtici', 'sahin', { body: '#6a7484', head: '#6a7484', crown: '#6a7484', iris: '#f2c230' }],
+    ['harpi', 'Harpi kartalı', 'Harpy_eagle', 'yirtici', 'kartal', { head: '#8a9098', crown: '#8a9098', body: '#2a2e34', belly: '#f2f2f0' }],
+    ['steller', 'Steller deniz kartalı', "Steller's_sea_eagle", 'yirtici', 'kartal', { body: '#2a2422', beak: '#f2a020' }],
+    ['kizil-akbaba', 'Kızıl akbaba', 'Griffon_vulture', 'yirtici', 'kartal', { body: '#b0885a', head: '#efe8dc', crown: '#efe8dc', beak: '#c8b8a0' }],
+    ['sakalli-akbaba', 'Sakallı akbaba', 'Bearded_vulture', 'yirtici', 'kartal', { body: '#3a3a3a', belly: '#e8a060', head: '#f2e6d0', crown: '#f2e6d0', beak: '#8a8a8a' }],
+    ['kondor', 'And kondoru', 'Andean_condor', 'yirtici', 'kartal', { body: '#1a1a1a', head: '#c8786a', crown: '#c8786a', neck: '#ffffff', beak: '#e8d8c0' }],
+    ['balik-kartali', 'Balık kartalı', 'Western_osprey', 'yirtici', 'kartal', { belly: '#f8f6f0', head: '#f8f6f0', mask: '#3a2a20', beak: '#1a1a1a' }],
+    ['sekreter', 'Sekreter kuşu', 'Secretarybird', 'yirtici', 'balikcil', { body: '#bcc2c8', head: '#d0d4d8', crestC: '#1a1a1a', beak: '#8a8a8a' }],
+    ['kizil-sahin', 'Kızıl kuyruklu şahin', 'Red-tailed_hawk', 'yirtici', 'sahin', { tail: '#c8582a' }],
+    ['kukumav', 'Kukumav', 'Little_owl', 'yirtici', 'baykus', { body: '#8a6a4a', iris: '#f2c230' }],
+    ['kulakli-baykus', 'Kulaklı orman baykuşu', 'Long-eared_owl', 'yirtici', 'baykus', { iris: '#f08a1c' }],
+    ['alaca-baykus', 'Alaca baykuş', 'Tawny_owl', 'yirtici', 'baykus', { body: '#9a6a3a', iris: '#1a1a1a' }],
+    ['lapland-baykus', 'Lapland baykuşu', 'Great_grey_owl', 'yirtici', 'baykus', { body: '#9aa0a6', belly: '#c8ccd0', head: '#a8aeb4', wing: '#8a9096' }],
+
+    /* Su kuşları */
+    ['ak-pelikan', 'Ak pelikan', 'Great_white_pelican', 'su', 'kugu', { beak: '#f2c230' }],
+    ['tepeli-pelikan', 'Tepeli pelikan', 'Dalmatian_pelican', 'su', 'kugu', { beak: '#f08a3c', body: '#eceae4' }],
+    ['karabatak', 'Karabatak', 'Great_cormorant', 'su', 'yesilbas', { body: '#1f2126', belly: '#1f2126', head: '#1f2126', wing: '#2a2e34', beak: '#5a5f66' }],
+    ['albatros', 'Gezgin albatros', 'Wandering_albatross', 'su', 'marti', { prim: '#2a2a2a', beak: '#f2c8b0' }],
+    ['kral-penguen', 'Kral penguen', 'King_penguin', 'su', 'penguen', {}],
+    ['adelie', 'Adelie penguen', 'Adélie_penguin', 'su', 'penguen', { neck: null, beakTip: null }],
+    ['mandarin', 'Mandarin ördeği', 'Mandarin_duck', 'su', 'yesilbas', { head: '#e8823c', body: '#8a5a3a', beak: '#d8312c' }],
+    ['angit', 'Angıt', 'Ruddy_shelduck', 'su', 'yesilbas', { body: '#d8823c', belly: '#d8823c', head: '#f2dcb8', beak: '#1a1a1a', neck: null }],
+    ['kanada-kazi', 'Kanada kazı', 'Canada_goose', 'su', 'kugu', { body: '#8a7a68', head: '#1a1a1a', neckC: '#1a1a1a', beak: '#1a1a1a' }],
+    ['siyah-kugu', 'Siyah kuğu', 'Black_swan', 'su', 'kugu', { body: '#1f2126', belly: '#24262a', head: '#1f2126', neckC: '#1f2126', wing: '#1a1c20', beak: '#d8312c' }],
+    ['turna', 'Turna', 'Common_crane', 'su', 'balikcil', { head: '#1a1a1a', crestC: '#d8312c', beak: '#c8c0b0' }],
+    ['tacli-turna', 'Taçlı turna', 'Grey_crowned_crane', 'su', 'balikcil', { crestC: '#f2c230', head: '#1a1a1a' }],
+    ['kasikci', 'Kaşıkçı', 'Eurasian_spoonbill', 'su', 'leylek', { beak: '#1a1a1a', legs: '#1a1a1a' }],
+    ['akbalikcil', 'Küçük akbalıkçıl', 'Little_egret', 'su', 'leylek', { beak: '#1a1a1a', legs: '#1a1a1a', prim: '#f6f6f2' }],
+    ['sumru', 'Sumru', 'Common_tern', 'su', 'marti', { prim: '#9aa2aa', beak: '#d8312c' }],
+    ['kelaynak', 'Kelaynak', 'Northern_bald_ibis', 'su', 'leylek', { body: '#2a3a34', head: '#d8786a', wing: '#2a3a34', beak: '#c84a3a' }],
+    ['kizil-ibis', 'Kızıl ibis', 'Scarlet_ibis', 'su', 'flamingo', { body: '#e8402a', head: '#e8402a', wing: '#d8342a', beak: '#8a4a3a' }],
+    ['sumsukkusu', 'Mavi ayaklı sümsükkuşu', 'Blue-footed_booby', 'su', 'marti', { wing: '#7a6a5a', legs: '#3ab0d8' }],
+    ['saztavugu', 'Saztavuğu', 'Common_moorhen', 'su', 'yesilbas', { body: '#2a2e34', head: '#2a2e34', beak: '#d8312c', neck: null }],
+    ['bahri', 'Bahri', 'Great_crested_grebe', 'su', 'yesilbas', { body: '#8a7a68', head: '#d8823c', neck: '#ffffff' }],
+    ['pabuc-gaga', 'Pabuç gagalı leylek', 'Shoebill', 'su', 'balikcil', { body: '#7a8494', head: '#8a949e', beak: '#b8a888' }],
+
+    /* Diğerleri */
+    ['devekusu', 'Devekuşu', 'Common_ostrich', 'diger', 'leylek', { body: '#1f2126', head: '#c8b0a0', prim: '#f6f6f2', beak: '#c8b0a0', legs: '#c8a098' }],
+    ['emu', 'Emu', 'Emu', 'diger', 'leylek', { body: '#6a5a48', head: '#5a6a8a', beak: '#2a2a2a', legs: '#5a5a5a' }],
+    ['kazuar', 'Kazuar', 'Southern_cassowary', 'diger', 'leylek', { body: '#1a1a1a', head: '#2a7ad8', beak: '#2a2a2a', legs: '#5a5a5a' }],
+    ['kivi', 'Kivi', 'Kiwi_(bird)', 'diger', 'yesilbas', { body: '#7a5a3a', head: '#7a5a3a', beak: '#d8c8b0' }],
+    ['yaban-hindisi', 'Yaban hindisi', 'Wild_turkey', 'diger', 'horoz', { body: '#4a3a2a', head: '#c8402a' }],
+    ['sulun', 'Sülün', 'Common_pheasant', 'diger', 'horoz', { body: '#b8682a', head: '#1f5a4a' }],
+    ['altin-sulun', 'Altın sülün', 'Golden_pheasant', 'diger', 'horoz', { body: '#d8312c', head: '#f2c230', crown: '#f2c230' }],
+    ['keklik', 'Kınalı keklik', 'Chukar_partridge', 'diger', 'guvercin', { body: '#a8a098', belly: '#d8c8b0', beak: '#d8312c', eyeRing: '#d8312c' }],
+    ['bildircin', 'Bıldırcın', 'Common_quail', 'diger', 'serce', {}],
+    ['kumru', 'Kumru', 'Eurasian_collared_dove', 'diger', 'guvercin', { body: '#c8b8a8', head: '#c8b8a8', wing: '#b8a898' }],
+    ['guguk', 'Guguk kuşu', 'Common_cuckoo', 'diger', 'guvercin', { belly: '#f2efe8', pat: 'plain' }],
+    ['gergedan-kusu', 'Büyük gergedan kuşu', 'Great_hornbill', 'diger', 'tukan', { beak: '#f2c230', beakTip: '#f2c230' }],
+    ['gokkuzgun', 'Gökkuzgun', 'European_roller', 'diger', 'yalicapkini', { body: '#3ab0d8', belly: '#3ab0d8', wing: '#8a5a3a' }],
+    ['ketzal', 'Ketzal', 'Resplendent_quetzal', 'diger', 'kolibri', { body: '#2aa86a', belly: '#d8312c', tailLen: 44, beak: '#f2c230' }],
+    ['motmot', 'Mavi taçlı motmot', 'Amazonian_motmot', 'diger', 'yalicapkini', { body: '#5aa040', head: '#2a5cc0', tailLen: 40 }]
+  ];
+  var CAT = {
+    papagan: ['muhabbet-yesil', 'muhabbet-mavi', 'muhabbet-sari', 'muhabbet-beyaz', 'muhabbet-mor', 'sultan', 'sultan-beyaz', 'jako', 'ara-kirmizi', 'ara-mavi', 'sumbul-ara', 'kakadu', 'pembe-kakadu', 'amazon', 'eclectus', 'gunes-konuru', 'quaker', 'lori', 'cennet', 'rosella', 'kea'],
+    otucu: ['kanarya', 'kanarya-kirmizi', 'zebra', 'karga', 'saksagan', 'alakarga', 'mavi-alakarga', 'serce', 'kirlangic', 'kizilgerdan', 'karatavuk', 'bulbul', 'saka', 'kardinal'],
+    yirtici: ['kartal', 'sahin', 'kerkenez', 'baykus', 'kar-baykusu', 'peceli-baykus'],
+    su: ['marti', 'deniz-papagani', 'penguen', 'flamingo', 'leylek', 'balikcil', 'yesilbas', 'kugu'],
+    diger: ['agackakan', 'yalicapkini', 'arikusu', 'ibibik', 'kolibri', 'tukan', 'guvercin', 'tavus', 'horoz']
+  };
+  Object.keys(CAT).forEach(function (c) { CAT[c].forEach(function (id) { var b = byId(id); if (b) b.cat = c; }); });
+  EXTRA.forEach(function (e) {
+    var base = byId(e[4]) || BIRDS[1], b = {};
+    Object.keys(base).forEach(function (k) { b[k] = base[k]; });
+    Object.keys(e[5] || {}).forEach(function (k) { b[k] = e[5][k]; });
+    b.id = e[0]; b.name = e[1]; b.cat = e[3]; delete b.hidden;
+    BIRDS.push(b); WIKI[e[0]] = e[2];
+  });
+  var CATS = [['papagan', 'Papağanlar'], ['otucu', 'Ötücüler'], ['yirtici', 'Yırtıcılar ve baykuşlar'], ['su', 'Su kuşları'], ['diger', 'Diğerleri']];
+
+  root.PT_BIRDS = { wiki: WIKI, cats: CATS, logo: logoSVG, list: BIRDS.filter(function (x) { return !x.hidden; }), all: BIRDS, svg: birdSVG, get: byId };
 })(typeof window !== 'undefined' ? window : globalThis);

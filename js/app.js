@@ -19,7 +19,10 @@
   /* Her biten tuvalden sonra sıradaki kuş açılır. İlki her zaman Pixel. */
   var REVEAL = ['pixel', 'kanarya', 'ara-kirmizi', 'baykus', 'kolibri', 'flamingo', 'tukan', 'yalicapkini', 'kakadu', 'tavus',
     'muhabbet-mavi', 'kartal', 'penguen', 'ibibik', 'sultan', 'kardinal', 'peceli-baykus', 'lori', 'arikusu', 'kugu',
-    'mavi-alakarga', 'deniz-papagani', 'sumbul-ara', 'horoz', 'kizilgerdan', 'gunes-konuru', 'balikcil', 'saksagan', 'kirlangic', 'yesilbas'];
+    'mavi-alakarga', 'deniz-papagani', 'sumbul-ara', 'horoz', 'kizilgerdan', 'gunes-konuru', 'balikcil', 'saksagan', 'kirlangic', 'yesilbas',
+    'kelaynak', 'mandarin', 'kel-kartal', 'gouldian', 'ketzal', 'altin-sulun', 'kakapo', 'mavi-bastankara', 'tacli-turna', 'pabuc-gaga',
+    'kizil-ibis', 'lapland-baykus', 'iskender', 'sariasma', 'gokkuzgun', 'kral-penguen', 'cennet-kusu', 'gokdogan', 'siyah-kugu', 'moluk-kakadu',
+    'ipekkuyruk', 'kukumav', 'gergedan-kusu', 'sumsukkusu', 'peri-citkusu', 'harpi', 'kizilkuyruk', 'kara-kakadu', 'tepeli-pelikan', 'devekusu'];
   var GOALS = [4, 6, 8, 10, 12, 16];
 
   /* ================= Kayıt ================= */
@@ -78,15 +81,26 @@
   function hydrate(root) {
     Array.prototype.forEach.call((root || document).querySelectorAll('[data-ph]'), function (el) {
       var id = el.getAttribute('data-ph'); el.removeAttribute('data-ph');
-      photo(id).then(function (u) {
-        if (!u) return;
-        var im = new Image(); im.alt = birdName(id); im.decoding = 'async';
-        im.onload = function () { el.innerHTML = ''; el.appendChild(im); };
-        im.src = u;
-      });
+      if (lazyIO && el.closest('.birds')) { el.setAttribute('data-lz', id); lazyIO.observe(el); return; }
+      load(el, id);
+    });
+  }
+  var lazyIO = 'IntersectionObserver' in window ? new IntersectionObserver(function (es) {
+    es.forEach(function (en) {
+      if (!en.isIntersecting) return;
+      lazyIO.unobserve(en.target); load(en.target, en.target.getAttribute('data-lz'));
+    });
+  }, { rootMargin: '200px' }) : null;
+  function load(el, id) {
+    photo(id).then(function (u) {
+      if (!u) return;
+      var im = new Image(); im.alt = birdName(id); im.decoding = 'async';
+      im.onload = function () { el.innerHTML = ''; el.appendChild(im); };
+      im.src = u;
     });
   }
   new MutationObserver(function () { hydrate(document.body); }).observe(document.body, { childList: true, subtree: true });
+  function trLow(s) { return String(s).replace(/I/g, 'ı').replace(/İ/g, 'i').toLowerCase(); }
   function birdName(id) { var b = BIRDS.get(id); return b ? b.name : ''; }
 
   /* ================= İkonlar ================= */
@@ -601,8 +615,11 @@
         : '<h1 class="h1">Profilim</h1>') +
       '<div class="section grid2"><div class="panel form">' +
       '<label for="fNick" style="margin-top:0">Takma ad <small>(gerçek adın gerekmez)</small></label><input type="text" id="fNick" maxlength="20" value="' + esc(p.nickname) + '" placeholder="Örneğin Mühendis" autocomplete="off">' +
-      '<label>Kuşun</label><div class="birds" id="fBirds">' + BIRDS.list.map(function (b) {
-        return '<button type="button" data-b="' + b.id + '"' + (b.id === p.bird ? ' class="on"' : '') + ' aria-label="' + esc(b.name) + '"><span class="ph" data-ph="' + b.id + '">' + BIRDS.svg(b.id, { branch: false }) + '</span>' + esc(b.name) + '</button>';
+      '<label for="fFind">Kuşun <small>(' + BIRDS.list.length + ' tür arasından seç)</small></label>' +
+      '<input type="search" id="fFind" placeholder="Kuş ara: kartal, kanarya, baykuş…" autocomplete="off">' +
+      '<div class="bcats" id="fCats"><button type="button" class="on" data-cat="">Hepsi</button>' + BIRDS.cats.map(function (c) { return '<button type="button" data-cat="' + c[0] + '">' + c[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="birds" id="fBirds">' + BIRDS.list.map(function (b) {
+        return '<button type="button" data-b="' + b.id + '" data-cat="' + (b.cat || '') + '" data-n="' + esc(trLow(b.name)) + '"' + (b.id === p.bird ? ' class="on"' : '') + ' aria-label="' + esc(b.name) + '"><span class="ph" data-ph="' + b.id + '">' + BIRDS.svg(b.id, { branch: false }) + '</span>' + esc(b.name) + '</button>';
       }).join('') + '</div>' +
       '<p class="credit">Kuş fotoğrafları Wikipedia ve Wikimedia Commons\'tan.</p>' +
       '<label>Rengin <small>(kuşunun halkası ve ekip tuvalindeki karelerin)</small></label><div class="colors" id="fColors">' +
@@ -622,6 +639,22 @@
       $('fPrevName').textContent = $('fNick').value.trim() || 'Takma adın';
       $('fPrevBird').textContent = birdName(draft.bird);
     }
+    var bCat = '';
+    function bFilter() {
+      var q = trLow($('fFind').value.trim()), n = 0;
+      Array.prototype.forEach.call($('fBirds').children, function (x) {
+        var ok = (!bCat || x.getAttribute('data-cat') === bCat) && (!q || x.getAttribute('data-n').indexOf(q) >= 0);
+        x.hidden = !ok; if (ok) n++;
+      });
+      $('fNone').hidden = n > 0;
+    }
+    $('fBirds').insertAdjacentHTML('afterend', '<p class="muted small" id="fNone" hidden>Bu isimde bir kuş bulamadık.</p>');
+    $('fFind').addEventListener('input', bFilter);
+    $('fCats').addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      bCat = b.getAttribute('data-cat');
+      Array.prototype.forEach.call(this.children, function (x) { x.classList.toggle('on', x === b); }); bFilter();
+    });
     $('fBirds').addEventListener('click', function (e) {
       var b = e.target.closest('button'); if (!b) return;
       draft.bird = b.getAttribute('data-b');
@@ -712,7 +745,7 @@
 
   /* ---------- Pixel'i tanı ---------- */
   function renderPixel() {
-    $('view').innerHTML = '<div class="grid2" style="align-items:center"><div class="window"><img src="img/pixel.jpg" alt="Pixel" style="width:100%;display:block;border-radius:12px"></div>' +
+    $('view').innerHTML = '<div class="grid2" style="align-items:center"><div class="pxgal"><div class="window"><img src="img/pixel.jpg" alt="Pixel, dizüstü bilgisayarın üstünde" style="width:100%;display:block;border-radius:12px"></div><div class="window"><img src="img/pixel-2.jpg" alt="Pixel, kafesindeki tünekte" style="width:100%;display:block;border-radius:12px"></div></div>' +
       '<div><h1 class="h1">Pixel</h1><p class="lead" style="margin-top:10px">PixelTime adını, sahibinin gri muhabbet kuşu Pixel\'den alıyor. Herkesin ilk tuvalinde ortaya çıkan kuş o; tuvalde gördüğün fotoğraf da onun kendi fotoğrafı.</p>' +
       '<p class="lead" style="margin-top:10px">Burada açılan her kare, onu biraz daha görünür kılıyor.</p><a class="btn go" href="#/" style="max-width:280px;margin-top:20px">Çalışmaya dön</a></div></div>';
   }
