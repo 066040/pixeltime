@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="14 30 462 448" width="462" height="448">
+<title>PixelTime - Pixel</title>
+<defs>
+ <pattern id="scallop" width="26" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(28)">
+  <rect width="26" height="18" fill="#262a30"/>
+  <path d="M0 17 Q13 2 26 17" fill="none" stroke="#f3f4f5" stroke-width="3.2" stroke-linecap="round"/>
+ </pattern>
+ <pattern id="barring" width="26" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(-12)">
+  <path d="M0 6 Q6.5 1.5 13 6 T26 6" fill="none" stroke="#2a2d32" stroke-width="2.1"/>
+ </pattern>
+ <pattern id="bark" width="34" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(-2)">
+  <path d="M0 4 Q9 2 17 5 T34 4" fill="none" stroke="#4a3120" stroke-width="1.6" opacity=".55"/>
+  <path d="M6 10 Q14 8 22 11" fill="none" stroke="#9a7352" stroke-width="1.3" opacity=".6"/>
+ </pattern>
+ <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="#8b6545"/><stop offset=".55" stop-color="#6b4a31"/><stop offset="1" stop-color="#4b3222"/>
+ </linearGradient>
+ <clipPath id="bodyClip">
+  <path id="bodyPath" d="M205 95 C250 80 300 100 310 150 C320 200 345 260 335 320 C325 370 280 395 235 390 C185 385 160 340 158 290 C156 250 150 220 148 190 C146 140 165 105 205 95 Z"/>
+ </clipPath>
+</defs>
+<g transform="translate(-16 -36)">
+ <path d="M292 372 L326 352 L418 498 L392 506 Z" fill="#1f2226"/>
+ <path d="M300 378 L318 366 L376 500 L360 504 Z" fill="#3b4352"/>
+ <g>
+ <!-- twig + leaves -->
+ <path d="M396 404 C410 384 428 368 452 356 L458 363 C436 376 420 390 410 410 Z" fill="url(#wood)"/>
+ <path d="M452 358 C470 338 494 336 506 342 C494 360 470 368 452 358 Z" fill="#6e9a48"/>
+ <path d="M452 358 C482 350 494 344 506 342" fill="none" stroke="#4f7432" stroke-width="2"/>
+ <path d="M440 368 C446 346 460 330 474 324 C474 344 462 362 440 368 Z" fill="#82ad59"/>
+ <path d="M440 368 C452 352 464 336 474 324" fill="none" stroke="#5c8239" stroke-width="2"/>
+ <!-- main branch -->
+ <path id="br" d="M36 402 C120 394 200 398 282 402 C360 406 424 400 482 388 C488 394 488 402 484 406 C424 418 360 426 282 424 C200 422 120 420 40 426 Z" fill="url(#wood)"/>
+ <path d="M36 402 C120 394 200 398 282 402 C360 406 424 400 482 388 C488 394 488 402 484 406 C424 418 360 426 282 424 C200 422 120 420 40 426 Z" fill="url(#bark)"/>
+ <path d="M44 403 C120 396 200 400 282 404 C360 408 420 402 478 391" fill="none" stroke="#a37d5a" stroke-width="2.4" stroke-linecap="round" opacity=".8"/>
+ <ellipse cx="38" cy="414" rx="5.5" ry="12" fill="#d2ad80" stroke="#7a5537" stroke-width="2"/>
+ <ellipse cx="38" cy="414" rx="2" ry="5" fill="none" stroke="#a9835c" stroke-width="1.2"/>
+ <ellipse cx="128" cy="412" rx="9" ry="5" fill="#4a3120"/>
+ <ellipse cx="128" cy="411" rx="4.5" ry="2.4" fill="#2f1f14"/>
+</g>
+ <use href="#bodyPath" fill="#c3c9cf"/>
+ <g clip-path="url(#bodyClip)">
+  <ellipse cx="215" cy="318" rx="58" ry="70" fill="#dce0e4"/>
+  <path d="M150 60 L340 60 L340 210 C300 215 250 200 205 185 C185 150 175 120 150 110 Z" fill="url(#barring)"/>
+  <ellipse cx="176" cy="196" rx="36" ry="48" fill="#eef0f2"/>
+ </g>
+ <path d="M235 175 C290 165 335 215 345 280 C352 330 345 380 330 420 C300 390 255 330 238 270 C228 235 225 200 235 175 Z" fill="url(#scallop)"/>
+ <path d="M235 175 C290 165 335 215 345 280 C352 330 345 380 330 420 C300 390 255 330 238 270 C228 235 225 200 235 175 Z" fill="none" stroke="#1d2024" stroke-width="3"/>
+ <circle cx="166" cy="236" r="4.2" fill="#2a2d32"/>
+ <circle cx="181" cy="242" r="4.2" fill="#2a2d32"/>
+ <circle cx="196" cy="240" r="4.2" fill="#2a2d32"/>
+ <ellipse cx="170" cy="222" rx="7" ry="9" fill="#5f78b0"/>
+ <path d="M156 172 C131 172 124 196 137 212 C143 201 153 193 164 188 Z" fill="#cbbd9c"/>
+ <ellipse cx="160" cy="168" rx="11" ry="7.5" fill="#8ea2cc"/>
+ <circle cx="191" cy="148" r="12" fill="#16181b"/>
+ <circle cx="195.5" cy="143.5" r="4" fill="#ffffff"/>
+ <g fill="#efb7a8" stroke="#c98a7a" stroke-width="2">
+  <path d="M214 386 C206 394 204 404 210 410 C216 404 220 398 222 390 Z"/>
+  <path d="M226 388 C222 398 224 408 232 412 C236 404 236 396 234 390 Z"/>
+  <path d="M254 388 C246 396 244 406 250 412 C256 406 260 400 262 392 Z"/>
+  <path d="M266 390 C262 400 264 410 272 414 C276 406 276 398 274 392 Z"/>
+ </g>
+</g>
+</svg>

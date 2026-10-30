@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="92 32 236 236" width="236" height="236">
+<title>PixelTime</title>
+<defs>
+ <pattern id="scallop" width="26" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(28)">
+  <rect width="26" height="18" fill="#262a30"/>
+  <path d="M0 17 Q13 2 26 17" fill="none" stroke="#f3f4f5" stroke-width="3.2" stroke-linecap="round"/>
+ </pattern>
+ <pattern id="barring" width="26" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(-12)">
+  <path d="M0 6 Q6.5 1.5 13 6 T26 6" fill="none" stroke="#2a2d32" stroke-width="2.1"/>
+ </pattern>
+ <pattern id="bark" width="34" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(-2)">
+  <path d="M0 4 Q9 2 17 5 T34 4" fill="none" stroke="#4a3120" stroke-width="1.6" opacity=".55"/>
+  <path d="M6 10 Q14 8 22 11" fill="none" stroke="#9a7352" stroke-width="1.3" opacity=".6"/>
+ </pattern>
+ <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="#8b6545"/><stop offset=".55" stop-color="#6b4a31"/><stop offset="1" stop-color="#4b3222"/>
+ </linearGradient>
+ <clipPath id="bodyClip">
+  <path id="bodyPath" d="M205 95 C250 80 300 100 310 150 C320 200 345 260 335 320 C325 370 280 395 235 390 C185 385 160 340 158 290 C156 250 150 220 148 190 C146 140 165 105 205 95 Z"/>
+ </clipPath>
+</defs>
+<g transform="translate(-16 -36)">
+ <path d="M292 372 L326 352 L418 498 L392 506 Z" fill="#1f2226"/>
+ <path d="M300 378 L318 366 L376 500 L360 504 Z" fill="#3b4352"/>
+ 
+ <use href="#bodyPath" fill="#c3c9cf"/>
+ <g clip-path="url(#bodyClip)">
+  <ellipse cx="215" cy="318" rx="58" ry="70" fill="#dce0e4"/>
+  <path d="M150 60 L340 60 L340 210 C300 215 250 200 205 185 C185 150 175 120 150 110 Z" fill="url(#barring)"/>
+  <ellipse cx="176" cy="196" rx="36" ry="48" fill="#eef0f2"/>
+ </g>
+ <path d="M235 175 C290 165 335 215 345 280 C352 330 345 380 330 420 C300 390 255 330 238 270 C228 235 225 200 235 175 Z" fill="url(#scallop)"/>
+ <path d="M235 175 C290 165 335 215 345 280 C352 330 345 380 330 420 C300 390 255 330 238 270 C228 235 225 200 235 175 Z" fill="none" stroke="#1d2024" stroke-width="3"/>
+ <circle cx="166" cy="236" r="4.2" fill="#2a2d32"/>
+ <circle cx="181" cy="242" r="4.2" fill="#2a2d32"/>
+ <circle cx="196" cy="240" r="4.2" fill="#2a2d32"/>
+ <ellipse cx="170" cy="222" rx="7" ry="9" fill="#5f78b0"/>
+ <path d="M156 172 C131 172 124 196 137 212 C143 201 153 193 164 188 Z" fill="#cbbd9c"/>
+ <ellipse cx="160" cy="168" rx="11" ry="7.5" fill="#8ea2cc"/>
+ <circle cx="191" cy="148" r="12" fill="#16181b"/>
+ <circle cx="195.5" cy="143.5" r="4" fill="#ffffff"/>
+ 
+</g>
+</svg>

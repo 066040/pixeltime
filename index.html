@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PixelTime - Çalış, Pixel'i ortaya çıkar!</title>
+<meta name="description" content="Çalıştığın her pomodoro, Pixel'den bir kare.">
+<meta name="theme-color" content="#2f84cc">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{
+  --font:"Trebuchet MS","Lucida Grande","Lucida Sans Unicode",Verdana,Arial,sans-serif;
+  --blue:#2f84cc;--blue-dark:#1d5f9c;--line:#b9d3e8;--ink:#23384d;--muted:#5d7387;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+body{font-family:var(--font);color:var(--ink);font-size:14px;line-height:1.45;min-height:100vh;
+  background:#dcedf9 repeating-linear-gradient(90deg,rgba(255,255,255,.35) 0 2px,transparent 2px 6px);
+  background-image:linear-gradient(#a9d3f2 0,#dcedf9 320px,#eef6fc 100%);background-attachment:fixed;padding:18px 12px 0}
+a{color:var(--blue)}
+
+#page{max-width:960px;margin:0 auto;background:#fff;border:1px solid #9cc1de;border-radius:10px 10px 0 0;
+  box-shadow:0 0 18px rgba(32,84,130,.25);overflow:hidden}
+
+/* ---------- Üst bant ---------- */
+.masthead{position:relative;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:14px 20px 10px;
+  background:linear-gradient(#6ab6ee 0%,#3b92d6 50%,#2a80c8 51%,#3a90d4 100%);border-bottom:1px solid #1f69a8}
+.masthead:after{content:"";position:absolute;left:0;right:0;top:0;height:50%;background:linear-gradient(rgba(255,255,255,.28),rgba(255,255,255,.06));pointer-events:none}
+.brand{position:relative;z-index:1;display:flex;flex-direction:column;align-items:flex-start;text-decoration:none;width:104px}
+.brand img{width:104px;height:auto;display:block;filter:drop-shadow(0 2px 2px rgba(0,0,0,.25))}
+.brand span{font:bold 23px/1 var(--font);color:#fff;text-shadow:0 1px 0 #1d5f9c,0 2px 4px rgba(0,0,0,.3);margin-top:2px;padding-left:2px;letter-spacing:-.5px}
+.brand span b{color:#ffd23f}
+.slogan{position:relative;z-index:1;color:#fff;text-align:right;text-shadow:0 1px 2px rgba(0,0,0,.35);padding-bottom:4px}
+.slogan strong{display:block;font-size:19px}
+.slogan small{font-size:12.5px;opacity:.95}
+.beta{position:absolute;z-index:2;left:122px;top:12px;width:62px;height:62px;display:flex;align-items:center;justify-content:center;
+  font:bold 13px var(--font);color:#fff;text-shadow:0 1px 0 #a34a00;transform:rotate(-14deg);
+  background:radial-gradient(circle at 40% 35%,#ffcf4d,#ff8a00 70%);
+  clip-path:polygon(50% 0,61% 15%,79% 7%,80% 26%,98% 30%,88% 47%,100% 62%,82% 69%,84% 88%,66% 85%,55% 100%,44% 86%,26% 94%,23% 76%,4% 72%,13% 55%,0 39%,18% 32%,17% 13%,36% 16%)}
+
+/* Sekmeler */
+.tabs{display:flex;gap:4px;padding:8px 14px 0;background:linear-gradient(#e9f3fb,#d3e6f5);border-bottom:1px solid var(--line)}
+.tabs a{display:block;padding:7px 14px 6px;font-weight:bold;font-size:13px;text-decoration:none;color:var(--blue-dark);
+  background:linear-gradient(#fff,#e2eef8);border:1px solid var(--line);border-bottom:0;border-radius:7px 7px 0 0}
+.tabs a.on{background:#fff;color:var(--ink);position:relative;top:1px}
+.sync{margin-left:auto;align-self:center;font-size:11.5px;font-weight:bold;padding:3px 9px;border-radius:10px;border:1px solid;margin-bottom:6px}
+.sync.ok{background:#e9f7df;border-color:#a9d68b;color:#3c7a1c}
+.sync.wait{background:#fff8d6;border-color:#e6d27a;color:#7a6512}
+.sync.off{background:#fde8e5;border-color:#e7a79e;color:#a23222}
+
+/* ---------- İçerik ---------- */
+main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;padding:18px}
+.box{border:1px solid var(--line);border-radius:8px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.08);overflow:hidden}
+.box h2{font:bold 14px var(--font);color:#fff;padding:7px 12px;display:flex;justify-content:space-between;align-items:center;
+  background:linear-gradient(#78bdee 0%,#4a9bdb 50%,#3a8dd2 51%,#4b9ddc 100%);text-shadow:0 1px 1px rgba(0,0,0,.35);border-bottom:1px solid #2f7dbd}
+.box h2 small{font-size:12px;font-weight:normal;opacity:.95}
+.box .in{padding:12px}
+#canvas{width:100%;aspect-ratio:1;display:block;border:1px solid #c6dbea;background:#f3f8fc}
+.barwrap{height:16px;margin-top:10px;border:1px solid #9cbfdb;border-radius:9px;background:linear-gradient(#e3edf5,#fff);overflow:hidden}
+#bar{height:100%;width:0;border-radius:8px;transition:width .6s;
+  background:linear-gradient(#a3e07a 0%,#6cc23a 50%,#56ad27 51%,#6bc13a 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.6)}
+
+.timer .in{text-align:center}
+#mode{font-weight:bold;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+#clock{font:bold 62px/1.1 Arial,Helvetica,sans-serif;color:var(--blue-dark);margin:4px 0 10px;font-variant-numeric:tabular-nums;
+  text-shadow:0 1px 0 #fff,0 2px 3px rgba(29,95,156,.25)}
+.btn{display:block;width:100%;font:bold 16px var(--font);padding:11px;border-radius:8px;cursor:pointer;margin-top:8px;color:#fff;
+  text-shadow:0 -1px 0 rgba(0,0,0,.35);box-shadow:inset 0 1px 0 rgba(255,255,255,.55),0 2px 4px rgba(0,0,0,.2)}
+.btn:active{transform:translateY(1px);box-shadow:inset 0 1px 3px rgba(0,0,0,.25)}
+.btn.primary{border:1px solid #3d7f17;background:linear-gradient(#9ddb6e 0%,#69bd35 50%,#52a722 51%,#64b931 100%)}
+.btn.blue{border:1px solid #1f69a8;background:linear-gradient(#7fc0f0 0%,#459ade 50%,#2f86cf 51%,#4196da 100%)}
+.btn.ghost{border:1px solid #a9bfd1;color:#34506a;text-shadow:0 1px 0 #fff;background:linear-gradient(#fff 0%,#eef4f9 50%,#e1ebf3 51%,#edf3f8 100%)}
+#rule{font-size:12.5px;margin-top:10px;padding:8px;border:1px solid #e6d27a;background:#fffbe3;border-radius:6px;color:#6d5a10;text-align:left}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px}
+.stats div{border:1px solid #cfe0ee;border-radius:6px;background:linear-gradient(#fff,#eef5fb);padding:6px 2px}
+.stats b{display:block;font-size:20px;color:var(--blue-dark)}
+.stats span{font-size:11px;color:var(--muted)}
+#testTag{display:inline-block;margin-top:10px;font-size:11px;font-weight:bold;color:#fff;background:#d9534f;padding:2px 7px;border-radius:4px}
+.tip{margin-top:12px;font-size:12px;color:var(--muted);text-align:left}
+.tip b{color:var(--ink)}
+
+/* Odak modu: sayfa kararır, pil dostu */
+body.focus{background-image:linear-gradient(#0b1b2b,#0b1b2b)}
+body.focus #page{background:#122436;border-color:#1f3a55;box-shadow:none}
+body.focus .masthead,body.focus .tabs{filter:brightness(.45)}
+body.focus .box{background:#152a3f;border-color:#244463}
+body.focus .box h2{filter:brightness(.6)}
+body.focus #clock{color:#d7e9f8;text-shadow:none}
+body.focus #mode,body.focus .stats span{color:#8fb0cc}
+body.focus .stats div{background:#1b3550;border-color:#244463}
+body.focus .stats b{color:#d7e9f8}
+body.focus #canvas{background:#1b3550;border-color:#244463}
+body.focus footer{filter:brightness(.45)}
+body.focus .tip,body.focus .tip b{color:#8fb0cc}
+
+/* Bildirim çubuğu */
+.toast{position:fixed;left:50%;top:10px;transform:translate(-50%,-80px);opacity:0;transition:all .3s;z-index:9;max-width:calc(100% - 24px);
+  padding:9px 16px;border-radius:6px;font-weight:bold;text-align:center;border:1px solid #e6d27a;background:#fff8c4;color:#5e4d0a;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+.toast.show{transform:translate(-50%,0);opacity:1}
+.toast.good{background:#e4f6d6;border-color:#9fd27c;color:#33691a}
+.toast.bad{background:#fde3df;border-color:#e59a8f;color:#94291b}
+
+footer{max-width:960px;margin:0 auto;padding:12px;text-align:center;font-size:11.5px;color:#4c6377;
+  background:linear-gradient(#e4eff8,#cfe2f1);border:1px solid #9cc1de;border-top:0}
+footer img{width:16px;height:16px;vertical-align:-3px;margin-right:4px}
+footer .best{display:block;margin-top:3px;color:#7b90a3}
+
+@media (max-width:760px){
+  body{padding:0}
+  #page{border-radius:0;border-left:0;border-right:0}
+  main{grid-template-columns:1fr;padding:12px;gap:12px}
+  .timer{order:-1}
+  .masthead{padding:12px 12px 8px}
+  .brand,.brand img{width:84px}.brand span{font-size:19px}
+  .beta{left:96px;top:8px;width:50px;height:50px;font-size:11px}
+  .slogan strong{font-size:15px}.slogan small{display:none}
+  .tabs{padding:6px 8px 0;flex-wrap:wrap}.tabs a{padding:6px 9px 5px;font-size:12px}
+  .sync{flex-basis:100%;margin:6px 0;text-align:center}
+  #clock{font-size:56px}
+  footer{border-left:0;border-right:0}
+}
+</style>
+</head>
+<body>
+<div id="page">
+  <header class="masthead">
+    <a class="brand" href="./" aria-label="PixelTime">
+      <img src="logo.svg" alt="Dalda oturan Pixel" width="104" height="101">
+      <span>Pixel<b>Time</b></span>
+    </a>
+    <div class="beta">BETA!</div>
+    <div class="slogan"><strong>Çalış, Pixel'i ortaya çıkar!</strong><small>Her pomodoro, Pixel'den bir kare.</small></div>
+  </header>
+
+  <nav class="tabs">
+    <a href="./" class="on">Ana Sayfa</a>
+    <a href="#" data-soon>Sıralama</a>
+    <a href="#" data-soon>Ekipler</a>
+    <span id="sync" class="sync ok">Her şey kayıtlı</span>
+  </nav>
+
+  <main>
+    <section class="box wall">
+      <h2>Pixel'in Tuvali <small>Tuval <span id="canvasNo">1</span> · <span id="progress">0 / 256</span></small></h2>
+      <div class="in">
+        <canvas id="canvas" aria-label="Pixel tuvali"></canvas>
+        <div class="barwrap"><div id="bar"></div></div>
+      </div>
+    </section>
+
+    <section class="box timer">
+      <h2>Zamanlayıcı</h2>
+      <div class="in">
+        <div id="mode">Hazır</div>
+        <div id="clock">25:00</div>
+        <button id="startBtn" class="btn primary">Pomodoro Başlat</button>
+        <button id="breakBtn" class="btn blue" hidden>5 dk Mola</button>
+        <button id="stopBtn" class="btn ghost" hidden>Vazgeç</button>
+        <button id="newBtn" class="btn primary" hidden>Yeni Tuvale Başla</button>
+        <p id="rule" hidden><b>Dikkat:</b> Uygulamadan çıkarsan ya da ekranı kapatırsan Pixel kaçar ve bu kare açılmaz. Telefonu ekranı açık şekilde bir kenara bırak.</p>
+        <div class="stats">
+          <div><b id="today">0</b><span>bugün</span></div>
+          <div><b id="total">0</b><span>toplam</span></div>
+          <div><b id="hours">0</b><span>saat</span></div>
+        </div>
+        <span id="testTag" hidden>TEST MODU · 1 sn / mola 2 sn</span>
+        <p class="tip"><b>Nasıl çalışır?</b> "Pomodoro Başlat"a bas ve 25 dakika çalış. Süre bitince Pixel'in tuvalinden bir kare açılır. Bütün kareleri açınca Pixel ortaya çıkar!</p>
+      </div>
+    </section>
+  </main>
+</div>
+<footer>
+  <img src="favicon.svg" alt="">© 2026 PixelTime · Pixel'in anısına
+  <span class="best">Chrome ve Firefox'ta en iyi görünür</span>
+</footer>
+<div id="toast" class="toast" role="status"></div>
+
+<script src="app.js"></script>
+<script>
+document.querySelectorAll('[data-soon]').forEach(function (a) {
+  a.addEventListener('click', function (e) {
+    e.preventDefault();
+    var t = document.getElementById('toast');
+    t.textContent = 'Çok yakında!'; t.className = 'toast show';
+    setTimeout(function () { t.className = 'toast'; }, 2500);
+  });
+});
+</script>
+</body>
+</html>
