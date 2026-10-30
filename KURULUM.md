@@ -49,7 +49,7 @@ Listede `true` olmayan kuşların fotoğrafı Wikipedia'dan gelir.
 
 ## Sunucu güncellemesi
 
-Supabase'i daha önce kurduysan `supabase/schema.sql` dosyasını SQL Editor'de bir kez daha çalıştır. Gradyan kenarlık (ikinci renk) ve sınava göre sıralama filtresi için gerekli.
+Supabase'i daha önce kurduysan `supabase/schema.sql` dosyasını SQL Editor'de bir kez daha çalıştır. Gradyan kenarlık, sınava göre sıralama, profil gizliliği ve başka kullanıcıların profiline bakma için gerekli.
 
 ## Kurallar (sunucu da kontrol eder)
 

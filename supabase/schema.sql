@@ -32,6 +32,9 @@ create table if not exists public.profiles (
 
 -- Eski kurulumlar için: gradyan kenarlığın ikinci rengi
 alter table public.profiles add column if not exists color2 text check (color2 is null or color2 ~ '^#[0-9a-fA-F]{6}$');
+-- Profil gizliliği ve kuş sırası (her hesapta farklı sıra için tohum)
+alter table public.profiles add column if not exists is_public boolean not null default true;
+alter table public.profiles add column if not exists seed text check (seed is null or char_length(seed) <= 40);
 -- Pixel profil kuşu PixelTime Saat sahiplerine özel; saat doğrulaması gelene kadar kimse seçemez
 alter table public.profiles drop constraint if exists profiles_pixel_pro;
 alter table public.profiles add constraint profiles_pixel_pro check (bird <> 'pixel');
@@ -247,32 +250,51 @@ end $$;
 drop function if exists public.leaderboard(text, timestamptz);
 drop function if exists public.leaderboard(text, timestamptz, text);
 create or replace function public.leaderboard(p_scope text, p_since timestamptz, p_exam text default null)
-returns table (label text, sub text, bird text, color text, color2 text, total bigint)
+returns table (uid uuid, label text, sub text, bird text, color text, color2 text, total bigint)
 language sql stable security definer set search_path = public as $$
   select * from (
-    select p.nickname, coalesce(p.city, ''), p.bird, p.color, p.color2, count(*)
+    select case when p.is_public or p.id = auth.uid() then p.id end,
+           case when p.is_public or p.id = auth.uid() then p.nickname else 'Gizli kullanıcı' end,
+           case when p.is_public or p.id = auth.uid() then coalesce(p.city, '') else '' end,
+           case when p.is_public or p.id = auth.uid() then p.bird end, p.color, p.color2, count(*)
       from blocks b join profiles p on p.id = b.user_id
       where p_scope = 'kisi' and b.started_at >= p_since and (p_exam is null or p.exam = p_exam)
-      group by p.id, p.nickname, p.city, p.bird, p.color, p.color2
+      group by p.id, p.nickname, p.city, p.bird, p.color, p.color2, p.is_public
     union all
-    select min(trim(p.school)), min(coalesce(p.city, '')), null, null, null, count(*)
+    select null::uuid, min(trim(p.school)), min(coalesce(p.city, '')), null, null, null, count(*)
       from blocks b join profiles p on p.id = b.user_id
       where p_scope = 'okul' and b.started_at >= p_since and nullif(trim(p.school), '') is not null and (p_exam is null or p.exam = p_exam)
       group by lower(trim(p.school))
     union all
-    select p.city, null, null, null, null, count(*)
+    select null::uuid, p.city, null, null, null, null, count(*)
       from blocks b join profiles p on p.id = b.user_id
       where p_scope = 'sehir' and b.started_at >= p_since and p.city is not null and (p_exam is null or p.exam = p_exam)
       group by p.city
     union all
-    select t.name, t.size || ' kişi', null, null, null, count(*)
+    select null::uuid, t.name, t.size || ' kişi', null, null, null, count(*)
       from blocks b join teams t on t.id = b.team_id
       where p_scope = 'ekip' and b.started_at >= p_since
       group by t.id, t.name, t.size
-  ) r (label, sub, bird, color, color2, total)
+  ) r (uid, label, sub, bird, color, color2, total)
   order by total desc, label
   limit 50;
 $$;
+
+-- ---------- Herkese açık profil ----------
+create or replace function public.public_profile(p_id uuid)
+returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  p profiles;
+begin
+  if auth.uid() is null then raise exception 'giris gerekli'; end if;
+  select * into p from profiles where id = p_id;
+  if not found then return null; end if;
+  if not p.is_public and p.id <> auth.uid() then return jsonb_build_object('private', true); end if;
+  return jsonb_build_object('nickname', p.nickname, 'bird', p.bird, 'color', p.color, 'color2', p.color2,
+    'exam', p.exam, 'city', p.city, 'school', p.school, 'seed', p.seed,
+    'total', (select count(*) from blocks b where b.user_id = p.id));
+end $$;
 
 -- Fonksiyon yetkileri
 revoke all on function public.record_blocks(jsonb) from public;
@@ -281,9 +303,11 @@ revoke all on function public.join_team(text) from public;
 revoke all on function public.leave_team() from public;
 revoke all on function public.team_state(uuid) from public;
 revoke all on function public.leaderboard(text, timestamptz, text) from public;
+revoke all on function public.public_profile(uuid) from public;
 grant execute on function public.record_blocks(jsonb) to authenticated;
 grant execute on function public.create_team(text, int) to authenticated;
 grant execute on function public.join_team(text) to authenticated;
 grant execute on function public.leave_team() to authenticated;
 grant execute on function public.team_state(uuid) to authenticated;
 grant execute on function public.leaderboard(text, timestamptz, text) to authenticated;
+grant execute on function public.public_profile(uuid) to authenticated;

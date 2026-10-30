@@ -19,19 +19,18 @@
   var TAG = '#pixeltime';
   var GOALS = [4, 6, 8, 10, 12, 16];
 
-  /* Portre sırası: her biten tuvalden sonra sıradaki kuş. Pixel bu sırada yok (PixelTime Saat'e özel). */
-  var REVEAL = (function () {
-    var first = ['yalicapkini', 'muhabbet', 'puhu', 'ara-kirmizi', 'flamingo', 'kar-baykusu', 'tukan', 'mandarin', 'arikusu', 'sultan',
-      'kizilgerdan', 'kartal', 'deniz-papagani', 'ibibik', 'kakadu', 'tavus', 'peceli-baykus', 'lori', 'kugu', 'kelaynak'];
-    var rest = BIRDS.list.map(function (b) { return b.id; }).filter(function (id) { return first.indexOf(id) < 0; });
-    return first.concat(rest);
-  })();
+  /* Portre sırası her hesapta farklıdır: hesabın tohumuna göre karıştırılır. Pixel bu sırada yok (PixelTime Saat'e özel). */
+  function revealFor(seed) {
+    var ids = BIRDS.list.map(function (b) { return b.id; });
+    return shuffled(ids.length, 'kuslar:' + seed).map(function (i) { return ids[i]; });
+  }
+  var REVEAL = [];
 
   /* ================= Kayıt ================= */
   function fresh() {
     return { seed: rnd(), profile: null, profileSynced: false, blocks: [], canvasNo: 1, active: null, goal: 8,
       fails: 0, pomStreak: 0, breakDue: false, mode: TEST ? 'kronometre' : 'pomodoro', team: null, teamState: null, pendingJoin: null, email: null,
-      pixelSeen: false, pro: false, pixelCanvas: false };
+      pixelSeen: false, pro: false, pixelCanvas: false, isPublic: true, sound: true };
   }
   var st;
   try { st = JSON.parse(localStorage.getItem(KEY)) || fresh(); } catch (e) { st = fresh(); }
@@ -41,6 +40,7 @@
     if (!('color2' in st.profile)) st.profile.color2 = null;
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
+  REVEAL = revealFor(st.seed);
 
   /* ================= Yardımcılar ================= */
   function $(id) { return document.getElementById(id); }
@@ -145,11 +145,12 @@
     calis: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>',
     ekip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.6"/><path d="M16.5 14.6c2.6.2 4.4 1.8 5 4.9"/></svg>',
     siralama: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 21V12h4v9M10 21V5h4v16M16 21v-6h4v6"/></svg>',
+    koleksiyon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7"/><rect x="13.5" y="3.5" width="7" height="7"/><rect x="3.5" y="13.5" width="7" height="7"/><rect x="13.5" y="13.5" width="7" height="7"/></svg>',
     profil: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>',
     lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
     share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 14v6h14v-6"/></svg>'
   };
-  var TABS = [['calis', '#/', 'Çalış'], ['ekip', '#/ekip', 'Ekip'], ['siralama', '#/siralama', 'Sıralama'], ['profil', '#/profil', 'Profil']];
+  var TABS = [['calis', '#/', 'Çalış'], ['ekip', '#/ekip', 'Ekip'], ['siralama', '#/siralama', 'Sıralama'], ['koleksiyon', '#/koleksiyon', 'Koleksiyon']];
   $('tabs').innerHTML = TABS.map(function (t) { return '<a href="' + t[1] + '" data-r="' + t[0] + '">' + t[2] + '</a>'; }).join('');
   $('bnav').innerHTML = TABS.map(function (t) { return '<a href="' + t[1] + '" data-r="' + t[0] + '">' + ICON[t[0]] + '<span>' + t[2] + '</span></a>'; }).join('');
 
@@ -326,6 +327,7 @@
 
   var actx = null;
   function ding() {
+    if (st.sound === false) return;
     try { if (navigator.vibrate) navigator.vibrate([90, 60, 90]); } catch (e) {}
     try {
       actx = actx || new (window.AudioContext || window.webkitAudioContext)();
@@ -365,17 +367,18 @@
     if (!st.profile) return Promise.resolve();
     return server().then(function () {
       var p = st.profile;
-      return sb.from('profiles').upsert({ id: user.id, nickname: p.nickname, bird: p.bird === 'pixel' ? 'muhabbet' : p.bird, color: p.color, color2: p.color2 || null,
+      return sb.from('profiles').upsert({ id: user.id, nickname: p.nickname, bird: p.bird === 'pixel' ? 'muhabbet' : p.bird, color: p.color, color2: p.color2 || null, is_public: st.isPublic !== false, seed: st.seed,
         exam: p.exam || null, city: p.city || null, school: p.school || null }).then(chk);
     }).then(function () { st.profileSynced = true; save(); });
   }
   /* Başka cihazdan e-postayla girildiyse profili ve kareleri sunucudan geri getir */
   function restore() {
     if (!user) return Promise.resolve(false);
-    return sb.from('profiles').select('nickname,bird,color,color2,exam,city,school').eq('id', user.id).maybeSingle().then(chk).then(function (p) {
+    return sb.from('profiles').select('nickname,bird,color,color2,exam,city,school,is_public,seed').eq('id', user.id).maybeSingle().then(chk).then(function (p) {
       if (!p) return false;
       st.profile = { nickname: p.nickname, bird: BIRDS.fix(p.bird), color: p.color, color2: p.color2 || null, exam: p.exam || '', city: p.city || '', school: p.school || '' };
-      st.profileSynced = true; st.email = user.email || st.email; st.pixelSeen = true;
+      st.profileSynced = true; st.email = user.email || st.email; st.pixelSeen = true; st.isPublic = p.is_public !== false;
+      if (p.seed) { st.seed = p.seed; REVEAL = revealFor(st.seed); }
       return sb.from('blocks').select('client_id,started_at,ended_at,mode').order('started_at').limit(10000).then(chk).then(function (rows) {
         var have = {}; st.blocks.forEach(function (b) { have[b.client_id] = 1; });
         (rows || []).forEach(function (r) { if (!have[r.client_id]) st.blocks.push({ client_id: r.client_id, started_at: r.started_at, ended_at: r.ended_at, mode: r.mode, synced: true }); });
@@ -438,21 +441,45 @@
   function route() { var h = location.hash.replace(/^#\/?/, '').split('?')[0]; return h || 'calis'; }
   function render() {
     var r = route();
-    if (!st.profile && r !== 'pixel') r = 'profil';
+    if (!st.profile && r !== 'pixel' && r !== 'yardim') r = 'profil';
+    if (dirty && dirty() && r !== 'profil' && !confirm('Profilde kaydedilmemiş değişiklikler var. Kaydetmeden çıkılsın mı?')) { history.replaceState(null, '', '#/profil'); return; }
+    dirty = null; closeMenu();
     if (st.active && st.active.kind !== 'break' && r !== 'calis') { r = 'calis'; if (location.hash !== '#/') history.replaceState(null, '', '#/'); }
     ['tabs', 'bnav'].forEach(function (id) {
       Array.prototype.forEach.call($(id).children, function (a) { var on = a.getAttribute('data-r') === r; a.classList.toggle('on', on); if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
     });
     document.body.classList.toggle('guest', !st.profile);
-    ({ calis: renderWork, ekip: renderTeam, siralama: renderBoard, profil: renderProfile, pixel: renderPixel }[r] || renderWork)();
+    if (/^u\//.test(r)) renderPublic(r.slice(2));
+    else ({ calis: renderWork, ekip: renderTeam, siralama: renderBoard, koleksiyon: renderCollection, profil: renderProfile, ayarlar: renderSettings, yardim: renderHelp, pixel: renderPixel }[r] || renderWork)();
     renderMe(); renderSync(); window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', render);
+  var dirty = null;
   function renderMe() {
     var p = st.profile, el = $('me');
-    el.hidden = !p; if (!p) return;
-    el.innerHTML = '<span>' + esc(p.nickname) + '</span>' + av(p.bird, p.color, p.color2, 34);
-    el.title = 'Bugün ' + todayCount() + ' kare';
+    $('acct').hidden = !p; if (!p) return;
+    el.innerHTML = '<span>' + esc(p.nickname) + '</span>' + av(p.bird, p.color, p.color2, 34) + '<svg class="chev" viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
+    el.setAttribute('aria-label', 'Hesap menüsü: ' + p.nickname);
+  }
+  /* Hesap menüsü: profil, ayarlar, yardım, çıkış */
+  function openMenu() {
+    var m = $('menu');
+    m.innerHTML = '<a role="menuitem" href="#/profil">Profil</a><a role="menuitem" href="#/ayarlar">Ayarlar</a><a role="menuitem" href="#/yardim">Yardım</a><a role="menuitem" href="#/pixel">Pixel\'in anısına</a>' +
+      '<hr><button type="button" role="menuitem" id="mOut">Çıkış yap</button>';
+    m.hidden = false; $('me').setAttribute('aria-expanded', 'true');
+    $('mOut').addEventListener('click', function () { closeMenu(); logout(); });
+    var first = m.querySelector('a'); if (first) first.focus();
+  }
+  function closeMenu() { var m = $('menu'); if (!m || m.hidden) return; m.hidden = true; $('me').setAttribute('aria-expanded', 'false'); }
+  $('me').addEventListener('click', function (e) { e.stopPropagation(); if ($('menu').hidden) openMenu(); else closeMenu(); });
+  document.addEventListener('click', function (e) { if (!e.target.closest('.acct')) closeMenu(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+  function logout() {
+    var warn = SERVER && st.email ? 'Bu cihazdan çıkış yapılacak. Aynı e-postayla tekrar girebilirsin.'
+      : 'Hesabına e-posta eklemediğin için çıkış yaparsan bu cihazdaki tüm kayıtların (kareler, portreler, profil) silinir ve geri getirilemez. Devam edilsin mi?';
+    if (!confirm(warn)) return;
+    var done = function () { try { localStorage.removeItem(KEY); localStorage.removeItem('pt_test'); } catch (e) {} location.href = location.pathname; };
+    if (SERVER && sb) sb.auth.signOut().then(done, done); else done();
   }
   function head(kicker, title, lead) {
     return '<header class="phead"><p class="kicker">' + kicker + '</p><h1>' + title + '</h1>' + (lead ? '<p class="lead">' + lead + '</p>' : '') + '</header>';
@@ -600,7 +627,7 @@
     var members = function () {
       var list = s.members.slice().sort(function (a, b) { return teamUi.sort === 'ad' ? a.nickname.localeCompare(b.nickname, 'tr') : b.count - a.count; });
       $('tMembers').innerHTML = list.map(function (m) {
-        return '<li' + (m.id === me() ? ' class="mine"' : '') + '>' + av(m.bird, m.color, m.color2, 36) + '<span class="name"><b>' + esc(m.nickname) + '</b></span><span class="num">' + m.count + '<small>kare</small></span></li>';
+        return '<li' + (m.id === me() ? ' class="mine"' : '') + '><a class="rowlink" href="#/u/' + esc(m.id) + '">' + av(m.bird, m.color, m.color2, 36) + '<span class="name"><b>' + esc(m.nickname) + '</b></span><span class="num">' + m.count + '<small>kare</small></span></a></li>';
       }).join('');
     };
     members();
@@ -655,8 +682,9 @@
         var mine = st.profile ? (board.scope === 'kisi' ? st.profile.nickname : board.scope === 'okul' ? st.profile.school : board.scope === 'sehir' ? st.profile.city : st.team && st.team.name) : null;
         out.innerHTML = '<div class="thead"><span>Sıra</span><span>' + { kisi: 'Kişi', okul: 'Okul', sehir: 'Şehir', ekip: 'Ekip' }[board.scope] + '</span><span>Kare</span></div><ol class="rows ranked">' + rows.map(function (r, i) {
           var isMe = mine && trLow(mine) === trLow(r.label);
-          return '<li' + (isMe ? ' class="mine"' : '') + '><span class="rank">' + (i + 1) + '</span>' + (r.bird ? av(r.bird, r.color, r.color2, 36) : '') +
-            '<span class="name"><b>' + esc(r.label) + '</b>' + (r.sub ? '<small>' + esc(r.sub) + '</small>' : '') + '</span><span class="num">' + r.total + '<small>' + hours(r.total) + ' saat</small></span></li>';
+          var inner = '<span class="rank">' + (i + 1) + '</span>' + (r.bird ? av(r.bird, r.color, r.color2, 36) : '') +
+            '<span class="name"><b>' + esc(r.label) + '</b>' + (r.sub ? '<small>' + esc(r.sub) + '</small>' : '') + '</span><span class="num">' + r.total + '<small>' + hours(r.total) + ' saat</small></span>';
+          return '<li' + (isMe ? ' class="mine"' : '') + '>' + (r.uid ? '<a class="rowlink" href="#/u/' + esc(r.uid) + '">' + inner + '</a>' : inner) + '</li>';
         }).join('') + '</ol>';
       }).catch(function (e) { out.innerHTML = '<p class="muted">Sıralama yüklenemedi. Bağlantını kontrol edip sayfayı yenile.</p>'; console.warn(e); });
   }
@@ -687,15 +715,26 @@
       '<div class="grid2f"><div class="field"><label for="fExam">Sınav</label><select id="fExam"><option value="">Belirtmek istemiyorum</option>' + DATA.exams.map(function (x) { return '<option' + (x === p.exam ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
       '<div class="field"><label for="fCity">Şehir</label><select id="fCity"><option value="">Belirtmek istemiyorum</option>' + DATA.cities.map(function (x) { return '<option' + (x === p.city ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div></div>' +
       '<div class="grid2f"><div class="field"><label for="fSchool">Okul <span class="opt">isteğe bağlı</span></label><input type="text" id="fSchool" maxlength="80" value="' + esc(p.school) + '" placeholder="Örneğin Ankara Fen Lisesi"></div>' +
-      '<div class="field"><label for="fGoal">Günlük hedef</label><select id="fGoal">' + GOALS.map(function (g) { return '<option value="' + g + '"' + (g === st.goal ? ' selected' : '') + '>' + g + ' kare · yaklaşık ' + hours(g) + ' saat</option>'; }).join('') + '</select></div></div>' +
+      (first ? '<div class="field"><label for="fGoal">Günlük hedef</label><select id="fGoal">' + goalOptions() + '</select></div>' : '<div></div>') + '</div>' +
+      (first ? '' : '<p class="savestate" id="fState" role="status"></p>') +
       '<button type="button" class="btn primary" id="fSave">' + (first ? 'Hesabı oluştur' : 'Değişiklikleri kaydet') + '</button>' +
       (first && SERVER ? '<p class="hint center">Başka bir cihazda hesabın var mı? <a href="#" id="fLogin">E-postanla giriş yap</a></p>' : '') +
       '</section>';
     $('view').innerHTML = first
       ? '<div class="onboard"><div class="obtext">' + head('Sezon ' + SEASON + ' · Kayıt', 'Çalıştıkça bir portre ortaya çıkar.', 'Kesintisiz geçen her 25 dakika, gizli bir kuş portresinin bir karesini açar. Telefonu bıraktığın süre görünür olur; ekibinle, okulunla, şehrinle birlikte.') +
         '<ol class="steps"><li><span><b>Oturumu başlat.</b> Pomodoro ya da kronometre. Oturum sürerken uygulamadan çıkılırsa kare açılmaz.</span></li><li><span><b>Kareler birikir.</b> Her portre 256 kareden oluşur, tamamlanınca koleksiyonuna girer.</span></li><li><span><b>Birlikte çalış.</b> Ekip kur, sıralamada okulunu ve şehrini temsil et.</span></li></ol></div>' + form + '</div>'
-      : head('Profil', esc(p.nickname)) + '<div class="profile">' + form + '<div class="stack">' + statsBlock() + proBlock() + collectionBlock() + accountBlock() + '</div></div>';
+      : head('Profil', esc(p.nickname), 'Görünüşün ve bilgilerin. Değişiklikler <b>Kaydet</b>\'e basınca geçerli olur.') + '<div class="profile">' + form + '<div class="stack">' + statsBlock() + proBlock() + '<a class="card linkcard" href="#/u/' + (user ? user.id : 'ben') + '"><b>Profilim başkalarına nasıl görünüyor?</b><span class="muted small">' + (st.isPublic ? 'Profilin herkese açık.' : 'Profilin gizli.') + ' Ayarlardan değiştirebilirsin.</span></a></div></div>';
 
+    var orig = JSON.stringify(p);
+    function current() { return { nickname: $('fNick').value.trim().replace(/\s+/g, ' '), bird: draft.bird, color: draft.color, color2: draft.color2, exam: $('fExam').value, city: $('fCity').value, school: $('fSchool').value.trim().slice(0, 80) }; }
+    function isDirty() { return !first && JSON.stringify(current()) !== orig; }
+    dirty = isDirty;
+    function state() {
+      if (first) return;
+      var d = isDirty();
+      $('fSave').disabled = !d; $('fSave').textContent = d ? 'Değişiklikleri kaydet' : 'Kaydedildi';
+      $('fState').textContent = d ? 'Kaydedilmemiş değişiklikler var.' : '';
+    }
     function prev() {
       $('fAv').innerHTML = av(draft.bird, draft.color, draft.color2, 64);
       $('fPrevName').textContent = $('fNick').value.trim() || 'Takma adın';
@@ -703,6 +742,7 @@
       $('fRing').value = draft.color2 ? 'gradyan' : 'tek';
       $('fC1').value = draft.color; $('fC2').value = draft.color2 || draft.color;
       $('fC2w').hidden = !draft.color2;
+      state();
     }
     function filter() {
       var q = trLow($('fFind').value.trim()), c = $('fCat').value, n = 0;
@@ -724,11 +764,14 @@
     $('fC2').addEventListener('input', function () { draft.color2 = this.value; prev(); });
     $('fPresets').addEventListener('click', function (e) { var i = e.target.getAttribute('data-i'); if (i == null) return; draft.color = PRESETS[i][0]; draft.color2 = PRESETS[i][1]; prev(); });
     $('fNick').addEventListener('input', prev);
+    ['fExam', 'fCity'].forEach(function (id) { $(id).addEventListener('change', state); });
+    $('fSchool').addEventListener('input', state);
     $('fSave').addEventListener('click', function () {
       var nick = $('fNick').value.trim().replace(/\s+/g, ' ');
       if (nick.length < 2) { $('fNick').focus(); return toast('Takma adın en az 2 harf olmalı.', 'bad'); }
-      st.profile = { nickname: nick, bird: draft.bird, color: draft.color, color2: draft.color2, exam: $('fExam').value, city: $('fCity').value, school: $('fSchool').value.trim().slice(0, 80) };
-      st.goal = +$('fGoal').value || 8;
+      st.profile = current(); st.profile.nickname = nick;
+      if ($('fGoal')) st.goal = +$('fGoal').value || 8;
+      dirty = null;
       st.profileSynced = false; save();
       if (SERVER) pushProfile().then(sync).catch(function (e) { console.warn(e); });
       if (first) { go(st.pendingJoin && SERVER ? '#/ekip' : '#/'); if (!st.pixelSeen) pixelWelcome(); }
@@ -736,7 +779,6 @@
     });
     if ($('fLogin')) $('fLogin').addEventListener('click', function (e) { e.preventDefault(); emailModal('login'); });
     if ($('bCard')) $('bCard').addEventListener('click', seasonCard);
-    if ($('bBackup')) $('bBackup').addEventListener('click', function () { emailModal('backup'); });
     if ($('bPro')) $('bPro').addEventListener('click', proModal);
     if ($('bPixelCanvas')) $('bPixelCanvas').addEventListener('change', function () { st.pixelCanvas = this.checked; save(); toast(this.checked ? 'Çalış sayfasında artık Pixel\'in portresi açılıyor.' : 'Sıradaki kuş portresine dönüldü.', 'good'); });
     prev();
@@ -755,11 +797,7 @@
       '<div><dt>En iyi gün</dt><dd>' + s.best + '</dd></div><div><dt>Portre</dt><dd>' + s.birds + '</dd></div><div><dt>Bozulan oturum</dt><dd>' + s.fails + '</dd></div></dl>' +
       '<button type="button" class="btn ghost" id="bCard">' + ICON.share + 'Sezon kartımı oluştur</button></section>';
   }
-  function collectionBlock() {
-    var done = finishedCanvases(), h = '';
-    for (var i = 0; i < done; i++) { var b = bird(REVEAL[i % REVEAL.length]); h += '<figure><span class="ph" data-ph="' + b.id + '"><b>' + esc(b.name.charAt(0)) + '</b></span><figcaption><b>' + esc(b.name) + '</b><em>' + esc(b.latin) + '</em></figcaption></figure>'; }
-    return '<section class="card"><h2>Koleksiyon</h2>' + (done ? '<div class="collection">' + h + '</div>' : '<p class="muted">Tamamladığın portreler burada birikir. İlk portre ' + CELLS + ' karede tamamlanır.</p>') + '</section>';
-  }
+  function goalOptions() { return GOALS.map(function (g) { return '<option value="' + g + '"' + (g === st.goal ? ' selected' : '') + '>' + g + ' kare · yaklaşık ' + hours(g) + ' saat</option>'; }).join(''); }
   function proBlock() {
     if (st.pro) return '<section class="card pro"><p class="label">PixelTime Saat</p><h2>Pixel senin.</h2><p class="muted">Pixel\'i profil kuşu olarak seçebilir, portresi üzerinde çalışabilirsin.</p>' +
       '<label class="check"><input type="checkbox" id="bPixelCanvas"' + (st.pixelCanvas ? ' checked' : '') + '> Pixel\'in portresi üzerinde çalış</label></section>';
@@ -784,7 +822,7 @@
     });
   }
   function accountBlock() {
-    if (!SERVER) return '';
+    if (!SERVER) return '<section class="card"><h2>Hesap</h2><p class="muted">Kayıtların şu an yalnızca bu cihazda tutuluyor. Site sunucuya bağlandığında e-postanla hesabını yedekleyip başka cihazdan girebileceksin.</p></section>';
     return '<section class="card"><h2>Hesap</h2><p class="muted">' +
       (st.email ? 'Hesabın <b>' + esc(st.email) + '</b> adresine bağlı. Başka cihazdan bu e-postayla girebilirsin.'
         : 'Hesabın şu an yalnızca bu cihazda. Telefonun değişirse ya da tarayıcı verileri silinirse kayıtların kaybolabilir.') +
@@ -810,6 +848,87 @@
       p.then(chk).then(function () { if (kind === 'backup') { st.email = email; save(); } close(); toast('Link gönderildi. E-postanı kontrol et.', 'good', 6000); })
         .catch(function (e) { btn.disabled = false; btn.textContent = 'Link gönder'; toast(/not found|Signups not allowed/i.test(e.message || '') ? 'Bu e-postayla bir hesap bulunamadı.' : errText(e), 'bad'); });
     });
+  }
+
+  /* ---------- Koleksiyon ---------- */
+  function collectionItems(seed, count) {
+    var order = revealFor(seed), out = [];
+    for (var i = 0; i < count; i++) out.push({ no: i + 1, bird: order[i % order.length], seed: seed + ':' + (i + 1) });
+    return out;
+  }
+  function figureHtml(it, clickable) {
+    var b = bird(it.bird);
+    return '<figure' + (clickable ? ' tabindex="0" role="button" data-no="' + it.no + '" aria-label="' + esc(b.name) + ' portresi, paylaş"' : '') + '><span class="ph" data-ph="' + b.id + '"><b>' + esc(b.name.charAt(0)) + '</b></span><figcaption><span class="no">No. ' + it.no + '</span><b>' + esc(b.name) + '</b><em>' + esc(b.latin) + '</em></figcaption></figure>';
+  }
+  function renderCollection() {
+    var done = finishedCanvases(), items = collectionItems(st.seed, done), P = personal();
+    $('view').innerHTML = head('Koleksiyon', done ? done + ' portre tamamlandı.' : 'Henüz tamamlanmış portre yok.', 'Her portre ' + CELLS + ' kareden oluşur. Tamamlananlar burada birikir; birine dokunup paylaşım kartını oluşturabilirsin. Kuşların sırası her hesapta farklıdır.') +
+      '<section class="card"><div class="cardhead"><h2>Şu an açılan</h2><a class="btn ghost small" href="#/">Çalışmaya dön</a></div><p class="muted">Portre No. ' + st.canvasNo + ' · ' + P.opened + ' / ' + CELLS + ' kare · tamamlanınca türü açılır.</p><div class="meter"><i style="width:' + (P.opened / CELLS * 100) + '%"></i></div></section>' +
+      (done ? '<section class="collection big" id="cGrid">' + items.slice().reverse().map(function (it) { return figureHtml(it, true); }).join('') + '</section>' : '');
+    if (!done) return;
+    var open = function (el) { var no = +el.getAttribute('data-no'); if (no) shareCanvas('collection', items[no - 1]); };
+    $('cGrid').addEventListener('click', function (e) { var f = e.target.closest('figure'); if (f) open(f); });
+    $('cGrid').addEventListener('keydown', function (e) { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('figure')) { e.preventDefault(); open(e.target); } });
+  }
+
+  /* ---------- Başka bir kullanıcının profili ---------- */
+  function renderPublic(id) {
+    var v = $('view');
+    var paint = function (d) {
+      if (!d) { v.innerHTML = head('Profil', 'Profil bulunamadı.') + '<a class="btn ghost" href="#/siralama">Sıralamaya dön</a>'; return; }
+      if (d.private) { v.innerHTML = head('Profil', 'Bu profil gizli.', 'Kullanıcı profilini yalnızca kendisine açık tutuyor.') + '<a class="btn ghost" href="#/siralama">Sıralamaya dön</a>'; return; }
+      var count = Math.floor((d.total || 0) / CELLS), items = d.seed ? collectionItems(d.seed, count) : [];
+      v.innerHTML = '<header class="phead pubhead">' + av(d.bird, d.color, d.color2, 88) + '<div><p class="kicker">' + esc([d.exam, d.city, d.school].filter(Boolean).join(' · ') || 'PixelTime') + '</p><h1>' + esc(d.nickname) + '</h1></div></header>' +
+        '<section class="card"><dl class="stats"><div><dt>Kare</dt><dd>' + (d.total || 0) + '</dd></div><div><dt>Saat</dt><dd>' + hours(d.total || 0) + '</dd></div><div><dt>Portre</dt><dd>' + count + '</dd></div></dl></section>' +
+        '<h2 class="sect">Koleksiyon</h2>' + (items.length ? '<section class="collection big">' + items.slice().reverse().map(function (it) { return figureHtml(it, false); }).join('') + '</section>' : '<p class="muted">Henüz tamamlanmış portre yok.</p>');
+    };
+    if (id === 'ben' || (user && id === user.id)) {
+      return paint({ nickname: st.profile.nickname, bird: st.profile.bird, color: st.profile.color, color2: st.profile.color2, exam: st.profile.exam, city: st.profile.city, school: st.profile.school, total: okBlocks().length, seed: st.seed });
+    }
+    if (!SERVER) return paint(null);
+    v.innerHTML = '<p class="muted">Yükleniyor…</p>';
+    server().then(function () { return sb.rpc('public_profile', { p_id: id }).then(chk); }).then(paint)
+      .catch(function (e) { console.warn(e); paint(null); });
+  }
+
+  /* ---------- Ayarlar ---------- */
+  function renderSettings() {
+    $('view').innerHTML = head('Hesap', 'Ayarlar') +
+      '<div class="settings">' +
+      '<section class="card form"><h2>Çalışma</h2>' +
+      '<div class="field"><label for="sGoal">Günlük hedef</label><select id="sGoal">' + goalOptions() + '</select><p class="hint">Çalış sayfasındaki kutucuklar bu hedefe göre dolar.</p></div>' +
+      '<label class="check"><input type="checkbox" id="sSound"' + (st.sound !== false ? ' checked' : '') + '> Kare açılınca ses ve titreşim</label></section>' +
+      '<section class="card form"><h2>Gizlilik</h2>' +
+      '<div class="field"><label for="sPublic">Profil görünürlüğü</label><select id="sPublic"><option value="1"' + (st.isPublic ? ' selected' : '') + '>Herkese açık</option><option value="0"' + (!st.isPublic ? ' selected' : '') + '>Gizli</option></select>' +
+      '<p class="hint" id="sPubHint"></p></div></section>' +
+      accountBlock() +
+      '<section class="card"><h2>Oturum</h2><p class="muted">' + (SERVER && st.email ? 'Bu cihazdan çıkış yapınca aynı e-postayla tekrar girebilirsin.' : 'E-posta eklemeden çıkış yaparsan bu cihazdaki kayıtların silinir.') + '</p><button type="button" class="btn ghost danger" id="sOut">Çıkış yap</button></section>' +
+      '</div>';
+    var hint = function () { $('sPubHint').textContent = $('sPublic').value === '1' ? 'Diğer kullanıcılar sıralamadan profiline girip koleksiyonunu ve toplam saatini görebilir. Gerçek adın hiçbir yerde görünmez.' : 'Profiline kimse bakamaz. Sıralamada takma adın yerine "Gizli kullanıcı" yazar.'; };
+    hint();
+    $('sGoal').addEventListener('change', function () { st.goal = +this.value; save(); toast('Günlük hedef kaydedildi.', 'good'); });
+    $('sSound').addEventListener('change', function () { st.sound = this.checked; save(); });
+    $('sPublic').addEventListener('change', function () { st.isPublic = this.value === '1'; st.profileSynced = false; save(); hint(); if (SERVER) pushProfile().catch(function (e) { console.warn(e); }); toast('Gizlilik ayarı kaydedildi.', 'good'); });
+    if ($('bBackup')) $('bBackup').addEventListener('click', function () { emailModal('backup'); });
+    $('sOut').addEventListener('click', logout);
+  }
+
+  /* ---------- Yardım ---------- */
+  function renderHelp() {
+    var qa = [
+      ['Kare nasıl açılır?', 'Pomodoro ya da kronometreyle kesintisiz geçen her 25 dakika bir kare açar. Bir portre ' + CELLS + ' kareden oluşur.'],
+      ['Oturum neden bozuldu?', 'Oturum sürerken uygulamadan 2 saniyeden uzun çıkılırsa, ekran kapanırsa ya da uygulama kapanırsa o kare açılmaz. Kronometrede o ana kadar dolan kareler kaydedilir.'],
+      ['Günde kaç kare açabilirim?', 'En fazla 28 kare, yani yaklaşık 12 saat. Günlük hedefini Ayarlar\'dan değiştirebilirsin.'],
+      ['Hangi kuş çıkacak?', 'Portreler tamamlanana kadar gizlidir; yarıya gelince kategorisi görünür. Kuşların sırası her hesapta farklıdır.'],
+      ['Ekip nasıl çalışır?', 'Ekip 2-10 kişidir. Üyelerin açtığı her kare, kişi sayısına göre büyüyen ortak ekip portresine de işlenir.'],
+      ['Sıralama neye göre?', 'Seçtiğin dönemde açılan kare sayısına göre. Kişi, okul, şehir ve ekip olarak; sınava göre de filtrelenebilir.'],
+      ['Profilimi kim görebilir?', 'Profilin herkese açıksa diğer kullanıcılar takma adını, kuşunu, toplam saatini ve koleksiyonunu görebilir. Ayarlar\'dan gizli yapabilirsin.'],
+      ['Kayıtlarım nerede tutuluyor?', 'İnternetsizken bu cihazda tutulur, bağlanınca eşitlenir. E-posta eklersen başka cihazdan da girebilirsin.'],
+      ['PixelTime Saat nedir?', 'Masaya koyulan, telefonsuz çalışmak için yapılmış bir çalışma saati. Sahipleri Pixel\'in portresi üzerinde çalışabilir ve Pixel\'i profil kuşu yapabilir.'],
+      ['Paylaşımda hangi etiket?', 'Portre ve sezon kartlarını paylaşırken ' + TAG + ' etiketini kullan.']
+    ];
+    $('view').innerHTML = head('Yardım', 'Sık sorulanlar') + '<div class="faq">' + qa.map(function (x) { return '<details><summary>' + esc(x[0]) + '</summary><p>' + esc(x[1]) + '</p></details>'; }).join('') + '</div>' +
+      '<p class="muted small" style="margin-top:24px">Cevabını bulamadığın bir şey olursa Instagram hesabımızdan yazabilirsin. Hesabımız yakında açılıyor.</p>';
   }
 
   /* ---------- Kayıttan sonra: Pixel'le tanışma (bir kez) ---------- */
@@ -849,9 +968,18 @@
     g.fillStyle = '#17191c'; g.font = '600 64px ' + FS; g.textBaseline = 'alphabetic'; g.fillText('PixelTime', 220, 168);
     return { c: c, g: g };
   }
-  function shareCanvas(kind) {
-    var isTeam = kind === 'team', P = personal(), t = st.team, s = st.teamState;
-    var src = $(isTeam ? 'tcanvas' : 'pcanvas'); if (!src) return;
+  function shareCanvas(kind, item) {
+    var isTeam = kind === 'team', isCol = kind === 'collection', P = isCol ? { opened: CELLS, full: true, bird: item.bird } : personal(), t = st.team, s = st.teamState;
+    var src = isCol ? document.createElement('canvas') : $(isTeam ? 'tcanvas' : 'pcanvas'); if (!src) return;
+    if (isCol) {
+      if (!birdImage(item.bird)) {
+        if ((item.tries = (item.tries || 0) + 1) > 40) { toast('Kuşun fotoğrafı yüklenemedi. İnternet bağlantını kontrol et.', 'bad'); item.tries = 0; return; }
+        if (item.tries === 1) toast('Kart hazırlanıyor…');
+        setTimeout(function () { shareCanvas(kind, item); }, 200); return;
+      }
+      item.tries = 0;
+      drawCanvas(src, N, CELLS, item.seed, item.bird);
+    }
     var full = isTeam ? s.opened.length >= t.cells : P.full, bid = isTeam ? teamBird(t) : P.bird, b = bird(bid);
     var opened = isTeam ? Math.min(s.opened.length, t.cells) : P.opened, cells = isTeam ? t.cells : CELLS;
     loadImg('img/pixel-logo-kucuk.svg').then(function (logo) {
@@ -861,6 +989,7 @@
       g.drawImage(src, 170, 280, 740, 740);
       g.fillStyle = '#17191c'; g.font = '600 52px ' + FS;
       g.fillText(full ? b.name : (isTeam ? t.name : 'Portre No. ' + st.canvasNo), 140, 1130);
+      if (isCol || (full && !isTeam)) { g.textAlign = 'right'; g.fillStyle = '#5b5f66'; g.font = '400 30px ' + FU; g.fillText('Portre No. ' + (isCol ? item.no : st.canvasNo), W - 90, 205); g.textAlign = 'left'; g.fillStyle = '#17191c'; g.font = '600 52px ' + FS; }
       g.font = 'italic 500 34px ' + FS; g.fillStyle = '#5b5f66';
       g.fillText(full ? b.latin : (isTeam ? 'Ekip portresi' : 'Gizli tür'), 140, 1180);
       g.textAlign = 'right'; g.font = '500 40px ' + FM; g.fillStyle = '#17191c'; g.fillText(opened + ' / ' + cells, 940, 1130);
@@ -901,7 +1030,7 @@
     });
   }
   function showImage(c, title, file, text) {
-    var url = c.toDataURL('image/png'), m = $('modal');
+    var url = c.toDataURL('image/png'), m = $('modal'); $('toast').className = 'toast';
     m.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mT"><button type="button" class="x" aria-label="Kapat">×</button><h2 id="mT">' + title + '</h2>' +
       '<img class="shot" src="' + url + '" alt="' + title + '"><p class="hint">Paylaşırken <b>' + TAG + '</b> etiketini kullan.</p>' +
       '<div class="two"><button type="button" class="btn primary" id="mShare">Paylaş</button><a class="btn ghost" download="' + file + '" href="' + url + '">İndir</a></div></div>';
