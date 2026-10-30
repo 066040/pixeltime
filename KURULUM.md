@@ -26,16 +26,15 @@ window.PT_CONFIG = {
 };
 ```
 
-6. **Authentication → URL Configuration** sayfasında **Site URL** kutusuna `https://066040.github.io/pixeltime/` yaz, **Redirect URLs** listesine de aynısını ekle. (E-postayla giriş linkleri buraya döner.)
-7. Dosyayı GitHub'a yükle. Sağ üstteki durum "Her şey kayıtlı" olunca sunucu bağlanmış demektir.
+6. Dosyayı GitHub'a yükle. Sağ üstteki durum "Her şey kayıtlı" olunca sunucu bağlanmış demektir.
 
 `anon public` anahtarı sitede görünmek için tasarlanmıştır; veritabanını tablolardaki güvenlik kuralları (RLS) ve doğrulamalı fonksiyonlar korur. `service_role` anahtarını asla siteye koyma.
 
 ## Test modu
 
-- Adresin sonuna `?test` ekle ya da sol üstteki **PixelTime logosuna** art arda 5 kez dokun.
+- Adresin sonuna `?test` ekle ya da sol üstteki **BETA!** rozetine art arda 5 kez dokun.
 - Test modunda 1 saniye = 25 dakika sayılır, tuval 16 karedir, sunucuya hiçbir şey gönderilmez ve veriler gerçek verilerden ayrı tutulur.
-- Kapatmak için logoya tekrar 5 kez dokun.
+- Kapatmak için rozete tekrar 5 kez dokun.
 
 ## Kurallar (sunucu da kontrol eder)
 
