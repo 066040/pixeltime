@@ -1,13 +1,13 @@
 {
   "name": "PixelTime",
   "short_name": "PixelTime",
-  "description": "Çalıştığın her pomodoro, Pixel'den bir kare.",
+  "description": "Çalıştığın her 25 dakika, bir kuşun bir karesini açar.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#f6f3ee",
-  "theme_color": "#2f84cc",
+  "background_color": "#16183a",
+  "theme_color": "#16183a",
   "lang": "tr",
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },

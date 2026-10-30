@@ -3,45 +3,39 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>PixelTime - Çalış, Pixel'i ortaya çıkar!</title>
-<meta name="description" content="Çalıştığın her 25 dakika, Pixel'den bir kare. Tek başına ya da ekibinle çalış, Pixel'i ortaya çıkar.">
-<meta name="theme-color" content="#2f84cc">
+<title>PixelTime</title>
+<meta name="description" content="Çalıştığın her 25 dakika, gökyüzünde bir kuşun bir parçasını açar. Tek başına ya da ekibinle çalış.">
+<meta name="theme-color" content="#16183a">
 <meta name="color-scheme" content="only light">
 <meta name="darkreader-lock">
-<meta property="og:title" content="PixelTime - Çalış, Pixel'i ortaya çıkar!">
-<meta property="og:description" content="Çalıştığın her 25 dakika, Pixel'den bir kare.">
+<meta property="og:title" content="PixelTime">
+<meta property="og:description" content="Çalıştığın her 25 dakika, bir kuşun bir parçasını açar.">
 <meta property="og:image" content="icon-512.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<div id="page">
-  <header class="masthead">
-    <a class="brand" href="#/" aria-label="PixelTime ana sayfa">
-      <img src="logo.svg" alt="Dalda oturan Pixel" width="104" height="101">
-      <span>Pixel<b>Time</b></span>
-    </a>
-    <div class="beta">BETA!</div>
-    <div class="hello" id="hello"><div><strong>Çalış, Pixel'i ortaya çıkar!</strong><small>Her 25 dakika, Pixel'den bir kare.</small></div></div>
-  </header>
+<div class="sky" aria-hidden="true"><div class="stars"></div><div class="sun"></div></div>
 
-  <nav class="tabs" id="tabs">
-    <a href="#/" data-r="calis">Çalış</a>
-    <a href="#/ekip" data-r="ekip">Ekibim</a>
-    <a href="#/siralama" data-r="siralama">Sıralama</a>
-    <a href="#/profil" data-r="profil">Profilim</a>
-    <span id="sync" class="sync local">Yerel mod</span>
-  </nav>
+<header class="top">
+  <a class="brand" href="#/" aria-label="PixelTime ana sayfa"><img src="favicon.svg" alt="" width="44" height="44"><span>Pixel<i>Time</i></span></a>
+  <span class="grow"></span>
+  <nav class="tabs" id="tabs" aria-label="Sayfalar"></nav>
+  <span id="sync" class="sync">Yerel mod</span>
+  <a class="me" id="me" href="#/profil" hidden></a>
+</header>
 
-  <main id="view" class="view"></main>
-</div>
-<footer>
-  <img src="favicon.svg" alt="">© 2026 PixelTime · <a href="#/pixel">Pixel'in anısına</a>
-  <span class="best">Chrome ve Firefox'ta en iyi görünür</span>
-</footer>
+<main id="view"></main>
+
+<footer>Pixel'in anısına yapıldı. <a href="#/pixel">Pixel'i tanı</a></footer>
+
+<nav class="bnav" id="bnav" aria-label="Sayfalar"></nav>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <div id="modal" class="modal" hidden></div>
 

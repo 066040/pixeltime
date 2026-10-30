@@ -5,43 +5,49 @@
   /* ================= Ayarlar ================= */
   var CFG = window.PT_CONFIG || {};
   var BIRDS = window.PT_BIRDS, DATA = window.PT_DATA;
-  var TEST = /[?&]test\b/.test(location.search) || (function () { try { return localStorage.getItem('pt_test') === '1'; } catch (e) { return false; } })();           // ?test → 1 sn blok, 16 kare, sunucuya gitmez
-  var BLOCK_MS = TEST ? 1e3 : 25 * 60e3;                    // 1 kare = 25 dk odak
+  var TEST = /[?&]test\b/.test(location.search) || (function () { try { return localStorage.getItem('pt_test') === '1'; } catch (e) { return false; } })();
+  var BLOCK_MS = TEST ? 1e3 : 25 * 60e3;          // 1 kare = 25 dk odak
   var BREAK_MS = TEST ? 2e3 : 5 * 60e3;
-  var LONG_BREAK_MS = TEST ? 3e3 : 15 * 60e3;               // her 4 pomodoroda bir uzun mola
+  var LONG_BREAK_MS = TEST ? 3e3 : 15 * 60e3;     // her 4 pomodoroda bir
   var LEAVE_GRACE_MS = 2000;
-  var DAILY_MAX = TEST ? 9999 : 28;                         // günde en fazla 28 kare (~12 saat)
-  var N = TEST ? 4 : 16, CELLS = N * N;                     // kişisel tuval
+  var DAILY_MAX = TEST ? 9999 : 28;               // günde en fazla 28 kare (~12 saat)
+  var N = TEST ? 4 : 16, CELLS = N * N;           // kişisel tuval
   var KEY = TEST ? 'pixeltime_test' : 'pixeltime_v2';
   var SERVER = !TEST && !!(CFG.supabaseUrl && CFG.supabaseKey);
   var SUPA_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
   var SEASON = 1;
+  /* Her biten tuvalden sonra sıradaki kuş açılır. İlki her zaman Pixel. */
+  var REVEAL = ['pixel', 'kanarya', 'ara-kirmizi', 'baykus', 'kolibri', 'flamingo', 'tukan', 'yalicapkini', 'kakadu', 'tavus',
+    'muhabbet-mavi', 'kartal', 'penguen', 'ibibik', 'sultan', 'kardinal', 'peceli-baykus', 'lori', 'arikusu', 'kugu',
+    'mavi-alakarga', 'deniz-papagani', 'sumbul-ara', 'horoz', 'kizilgerdan', 'gunes-konuru', 'balikcil', 'saksagan', 'kirlangic', 'yesilbas'];
+  var GOALS = [4, 6, 8, 10, 12, 16];
 
   /* ================= Kayıt ================= */
   function fresh() {
-    return { seed: rnd(), profile: null, profileSynced: false, blocks: [], canvasNo: 1, active: null,
-      fails: 0, pomStreak: 0, breakDue: false, mode: 'pomodoro', team: null, teamState: null, pendingJoin: null };
+    return { seed: rnd(), profile: null, profileSynced: false, blocks: [], canvasNo: 1, active: null, goal: 8,
+      fails: 0, pomStreak: 0, breakDue: false, mode: 'pomodoro', team: null, teamState: null, pendingJoin: null, email: null };
   }
   var st;
   try { st = JSON.parse(localStorage.getItem(KEY)) || fresh(); } catch (e) { st = fresh(); }
   var def = fresh(); for (var k in def) if (!(k in st)) st[k] = def[k];
+  if (st.profile && !BIRDS.get(st.profile.bird)) st.profile.bird = 'muhabbet-mavi';
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
 
   /* ================= Yardımcılar ================= */
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function rnd() { return Math.random().toString(36).slice(2, 10); }
-  function uuid() { return (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + rnd() + rnd()); }
+  function uuid() { return (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + rnd() + rnd()); }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function mmss(ms) { ms = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(ms / 60) + ':' + pad(ms % 60); }
   function hms(ms) { var s = Math.floor(Math.max(0, ms) / 1000), h = Math.floor(s / 3600); return (h ? h + ':' + pad(Math.floor(s % 3600 / 60)) : Math.floor(s / 60)) + ':' + pad(s % 60); }
   function dayKey(t) { var d = new Date(t); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
   function okBlocks() { return st.blocks.filter(function (b) { return !b.rejected; }); }
   function todayCount() { var t = dayKey(Date.now()); return okBlocks().filter(function (b) { return dayKey(b.started_at) === t; }).length; }
-  function hours(n) { return (n * 25 / 60).toFixed(1).replace('.', ','); }
+  function hours(n) { return (n * 25 / 60).toFixed(1).replace('.', ',').replace(',0', ''); }
   function toast(msg, kind, ms) {
     var el = $('toast'); el.textContent = msg; el.className = 'toast show ' + (kind || '');
-    clearTimeout(toast.t); toast.t = setTimeout(function () { el.className = 'toast'; }, ms || 3800);
+    clearTimeout(toast.t); toast.t = setTimeout(function () { el.className = 'toast ' + (kind || ''); }, ms || 3800);
   }
   function hashStr(s) { var h = 2166136261; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
   function shuffled(n, seed) {
@@ -51,29 +57,58 @@
     for (var j = n - 1; j > 0; j--) { var k = Math.floor(r() * (j + 1)), tmp = a[j]; a[j] = a[k]; a[k] = tmp; }
     return a;
   }
-  function birdBox(id, color, cls) { return '<span class="' + (cls || 'mini') + '" style="border-color:' + esc(color || '#5f78b0') + '">' + BIRDS.svg(id) + '</span>'; }
+  function av(id, color, size) { return '<span class="av" style="--ring:' + esc(color || '#ffd36e') + (size ? ';width:' + size + 'px;height:' + size + 'px' : '') + '">' + BIRDS.svg(id, { branch: false }) + '</span>'; }
+  function birdName(id) { var b = BIRDS.get(id); return b ? b.name : ''; }
 
-  /* ================= Pixel resmi ve tuval çizimi ================= */
-  var pixelImg = new Image(), pixelReady = false, fullCache = {};
-  pixelImg.onload = function () { pixelReady = true; fullCache = {}; drawAll(); };
-  pixelImg.src = 'logo.svg';
-  function fullImage(px) {
-    if (!pixelReady) return null;
-    if (fullCache[px]) return fullCache[px];
-    var c = document.createElement('canvas'); c.width = c.height = px;
-    var g = c.getContext('2d');
-    g.fillStyle = '#e3ebf3'; g.fillRect(0, 0, px, px);
-    var w = px * 0.92, h = w * pixelImg.height / pixelImg.width;
-    g.drawImage(pixelImg, (px - w) / 2, (px - h) / 2 + px * 0.02, w, h);
-    return (fullCache[px] = c);
+  /* ================= İkonlar ================= */
+  var ICON = {
+    calis: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>',
+    ekip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.6"/><path d="M16.5 14.6c2.6.2 4.4 1.8 5 4.9"/></svg>',
+    siralama: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21V12h4v9M10 21V5h4v16M16 21v-6h4v6"/></svg>',
+    profil: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4c-4 0-7 3-7 7v2l-3 3h6"/><path d="M14 4c3 0 6 2.5 6 6.5 0 5-4 9.5-9 9.5"/><circle cx="14.5" cy="9" r="1" fill="currentColor"/></svg>'
+  };
+  var TABS = [['calis', '#/', 'Çalış'], ['ekip', '#/ekip', 'Ekibim'], ['siralama', '#/siralama', 'Sıralama'], ['profil', '#/profil', 'Profilim']];
+  $('tabs').innerHTML = $('bnav').innerHTML = TABS.map(function (t) { return '<a href="' + t[1] + '" data-r="' + t[0] + '">' + ICON[t[0]] + '<span>' + t[2] + '</span></a>'; }).join('');
+
+  /* ================= Gökyüzü: günlük hedefe göre geceden şafağa ================= */
+  function mix(a, b, t) {
+    var x = parseInt(a.slice(1), 16), y = parseInt(b.slice(1), 16);
+    var r = Math.round((x >> 16) + ((y >> 16) - (x >> 16)) * t), g = Math.round(((x >> 8) & 255) + (((y >> 8) & 255) - ((x >> 8) & 255)) * t), bl = Math.round((x & 255) + ((y & 255) - (x & 255)) * t);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1);
   }
-  /* side: kare sayısı (kenar), opened: açılan kare sayısı, seed: açılış sırası, owners: kare sahiplerinin renkleri */
-  function drawCanvas(cv, side, opened, seed, owners, highlight) {
+  function paintSky() {
+    var p = Math.min(1, st.profile ? todayCount() / (st.goal || 8) : 0), s = document.documentElement.style;
+    s.setProperty('--sky-top', mix('#16183a', '#3a2f7a', p));
+    s.setProperty('--sky-mid', mix('#1f2150', '#8a4a8a', p));
+    s.setProperty('--sky-bot', mix('#2d2b6a', '#ff8f6b', Math.pow(p, 1.3)));
+    s.setProperty('--stars', String(1 - p * 0.9));
+    s.setProperty('--sun-y', (115 - p * 55) + '%');
+  }
+
+  /* ================= Kuş resimleri ve tuval ================= */
+  var imgs = {}, fullCache = {};
+  function birdImage(id) {
+    if (imgs[id]) return imgs[id].ready ? imgs[id].img : null;
+    var im = new Image(), rec = imgs[id] = { img: im, ready: false };
+    im.onload = function () { rec.ready = true; drawAll(); };
+    im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(BIRDS.svg(id, { scene: true, size: 800 }));
+    return null;
+  }
+  function fullImage(px, id) {
+    var key = id + ':' + px; if (fullCache[key]) return fullCache[key];
+    var im = birdImage(id); if (!im) return null;
+    var c = document.createElement('canvas'); c.width = c.height = px;
+    c.getContext('2d').drawImage(im, 0, 0, px, px);
+    return (fullCache[key] = c);
+  }
+  var pulse = 0, pulseIdx = -1;
+  /* side: kenar kare sayısı · opened: açılan kare · seed: açılış sırası · owners: kare sahibi renkleri */
+  function drawCanvas(cv, side, opened, seed, birdId, owners, highlight) {
     if (!cv) return;
-    var cell = Math.max(8, Math.floor(720 / side)), px = cell * side;
+    var cell = Math.max(8, Math.floor(760 / side)), px = cell * side;
     if (cv.width !== px) { cv.width = cv.height = px; }
-    var g = cv.getContext('2d'), img = fullImage(px), order = shuffled(side * side, seed);
-    var dark = document.body.classList.contains('focus'), gap = side > 24 ? 1 : side > 8 ? 2 : 4;
+    var g = cv.getContext('2d'), img = fullImage(px, birdId), order = shuffled(side * side, seed);
+    var gap = side > 24 ? 1 : side > 8 ? 2.5 : 6, rad = side > 24 ? 1 : side > 8 ? 4 : 14;
     g.clearRect(0, 0, px, px);
     var shown = {};
     for (var i = 0; i < Math.min(opened, order.length); i++) shown[order[i]] = i + 1;
@@ -81,34 +116,34 @@
       var x = (p % side) * cell, y = Math.floor(p / side) * cell;
       if (shown[p]) {
         if (img) g.drawImage(img, x, y, cell, cell, x, y, cell, cell);
-        else { g.fillStyle = '#c3c9cf'; g.fillRect(x, y, cell, cell); }
+        else { g.fillStyle = '#cfd6e8'; g.fillRect(x, y, cell, cell); }
         var col = owners && owners[shown[p] - 1];
-        if (col && cell >= 10) { g.strokeStyle = col; g.lineWidth = Math.max(1, cell / 12); g.strokeRect(x + g.lineWidth / 2, y + g.lineWidth / 2, cell - g.lineWidth, cell - g.lineWidth); }
+        if (col && cell >= 10) { g.strokeStyle = col; g.lineWidth = Math.max(1, cell / 10); g.strokeRect(x + g.lineWidth / 2, y + g.lineWidth / 2, cell - g.lineWidth, cell - g.lineWidth); }
       } else {
-        g.fillStyle = dark ? '#1f3a55' : '#e6eef5';
-        g.fillRect(x + gap / 2, y + gap / 2, cell - gap, cell - gap);
+        g.fillStyle = 'rgba(255,255,255,0.07)';
+        rr(g, x + gap / 2, y + gap / 2, cell - gap, cell - gap, rad); g.fill();
       }
     }
-    if (highlight != null && highlight >= 0 && highlight < order.length) {
+    if (highlight != null && highlight >= 0 && highlight < order.length && pulse > 0) {
       var hp = order[highlight], hx = (hp % side) * cell, hy = Math.floor(hp / side) * cell;
-      g.strokeStyle = 'rgba(255,210,63,' + (pulse > 0 ? pulse : 0) + ')'; g.lineWidth = Math.max(3, cell / 6);
+      g.strokeStyle = 'rgba(255,211,110,' + pulse + ')'; g.lineWidth = Math.max(4, cell / 7);
       g.strokeRect(hx + g.lineWidth / 2, hy + g.lineWidth / 2, cell - g.lineWidth, cell - g.lineWidth);
     }
-    cv._meta = { side: side, cell: cell, order: order, opened: opened };
+    cv._meta = { side: side, order: order, opened: opened };
   }
-  var pulse = 0, pulseIdx = -1;
-  function flash(idx) { pulseIdx = idx; pulse = 1; (function step() { pulse -= 0.025; drawAll(); if (pulse > 0) requestAnimationFrame(step); })(); }
+  function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+  function flash(idx) { pulseIdx = idx; pulse = 1; (function step() { pulse -= 0.02; drawAll(); if (pulse > 0) requestAnimationFrame(step); })(); }
 
-  /* Kişisel tuval durumu */
   function personal() {
     var n = okBlocks().length, base = (st.canvasNo - 1) * CELLS, opened = Math.max(0, Math.min(CELLS, n - base));
-    return { opened: opened, full: opened >= CELLS, canNext: n >= st.canvasNo * CELLS, seed: st.seed + ':' + st.canvasNo };
+    return { opened: opened, full: opened >= CELLS, seed: st.seed + ':' + st.canvasNo, bird: REVEAL[(st.canvasNo - 1) % REVEAL.length] };
   }
+  function finishedCanvases() { return Math.floor(okBlocks().length / CELLS); }
   function drawAll() {
     var pc = $('pcanvas');
-    if (pc) { var P = personal(); drawCanvas(pc, N, P.opened, P.seed, null, pulseIdx); }
+    if (pc) { var P = personal(); drawCanvas(pc, N, P.opened, P.seed, P.bird, null, pulseIdx); }
     var tc = $('tcanvas');
-    if (tc && st.teamState) drawTeam(tc);
+    if (tc && st.team && st.teamState) drawTeam(tc);
   }
 
   /* ================= Ekranı açık tut ================= */
@@ -119,7 +154,7 @@
   /* ================= Zamanlayıcı ================= */
   function canWork() {
     if (!st.profile) { location.hash = '#/profil'; return false; }
-    if (todayCount() >= DAILY_MAX) { toast('Bugünlük sınıra ulaştın (12 saat). Dinlen, yarın devam!'); return false; }
+    if (todayCount() >= DAILY_MAX) { toast('Bugün 12 saat çalıştın, sınıra ulaştın. Yarın devam!'); return false; }
     return true;
   }
   function startWork() {
@@ -137,26 +172,32 @@
     save(); wake(); renderTimer();
   }
   function addBlock(s, e, mode) {
-    var P0 = personal().opened;
+    var P0 = personal(), before = todayCount();
     st.blocks.push({ client_id: uuid(), started_at: new Date(s).toISOString(), ended_at: new Date(e).toISOString(), mode: mode, synced: false });
     save();
-    if (P0 < CELLS) flash(P0);
-    if (st.teamState) { st.teamState.opened.push(me()); st.teamState._local = true; }
-    return personal();
+    if (P0.opened < CELLS) flash(P0.opened);
+    if (st.teamState) st.teamState.opened.push(me());
+    var P = personal();
+    if (before < st.goal && todayCount() >= st.goal) setTimeout(function () { toast('Günlük hedefine ulaştın! Güneş doğdu ☀️', 'good', 5000); }, 1600);
+    paintSky();
+    return P;
+  }
+  function celebrate(P, extra) {
+    if (P.full) toast(birdName(P.bird) + ' ortaya çıktı! Koleksiyonuna eklendi.', 'good', 5000);
+    else toast('Bir kare açıldı: ' + P.opened + '/' + CELLS + (extra || ''), 'good');
+    ding();
   }
   function completeWork() {
     var a = st.active; st.active = null; st.pomStreak++; st.breakDue = true;
     var P = addBlock(a.start, a.end, 'pomodoro');
-    unwake(); renderTimer(); renderHello();
-    toast(P.full ? 'Pixel ortaya çıktı! 🎉' : 'Bir kare açıldı! ' + P.opened + '/' + CELLS + '. Mola zamanı.', 'good');
-    beep(); sync();
+    unwake(); renderTimer(); renderMe(); celebrate(P, '. Mola zamanı.'); sync();
   }
   function stopWatch(reason) {
     var a = st.active; if (!a || a.kind !== 'watch') return;
-    st.active = null; save(); unwake(); renderTimer(); renderHello();
+    st.active = null; save(); unwake(); renderTimer(); renderMe();
     var got = a.credited;
-    if (reason) toast((got ? got + ' kare kazandın ama ' : '') + 'Pixel kaçtı! ' + reason, 'bad', 5000);
-    else toast(got ? 'Bitti! Bu oturumda ' + got + ' kare açtın.' : 'Bitti. 25 dakikayı doldurmadığın için kare açılmadı.', got ? 'good' : '', 5000);
+    if (reason) toast((got ? got + ' kare kaydedildi ama ' : '') + 'Pixel kaçtı! ' + reason, 'bad', 5000);
+    else toast(got ? 'Bitti. Bu oturumda ' + got + ' kare açtın.' : 'Bitti. 25 dakika dolmadığı için kare açılmadı.', got ? 'good' : '', 5000);
   }
   function fail(reason) {
     var a = st.active; if (!a) return;
@@ -170,22 +211,21 @@
     var a = st.active; if (!a) return;
     if (a.kind === 'break') { st.active = null; save(); unwake(); renderTimer(); return; }
     if (a.kind === 'watch') return stopWatch(null);
-    if (!confirm('Pomodoro yarıda kalırsa kare açılmaz. Vazgeçmek istiyor musun?')) return;
+    if (!confirm('Yarım kalan pomodoro kare açmaz. Bırakmak istiyor musun?')) return;
     fail('Pomodoro yarıda bırakıldı.');
   }
   function tick() {
     var a = st.active; if (!a || document.hidden) return;
     var now = Date.now();
     if (a.kind === 'work' && now >= a.end) return completeWork();
-    if (a.kind === 'break' && now >= a.end) { st.active = null; save(); unwake(); renderTimer(); toast('Mola bitti. Hazırsan devam!'); beep(); return; }
+    if (a.kind === 'break' && now >= a.end) { st.active = null; save(); unwake(); renderTimer(); toast('Mola bitti. Hazırsan devam!'); ding(); return; }
     if (a.kind === 'watch') {
       var k = Math.floor((now - a.start) / BLOCK_MS);
       while (a.credited < k) {
-        if (todayCount() >= DAILY_MAX) { stopWatch(null); toast('Bugünlük sınıra ulaştın. Dinlen, yarın devam!'); return; }
+        if (todayCount() >= DAILY_MAX) { stopWatch(null); toast('Bugün 12 saat çalıştın, sınıra ulaştın. Yarın devam!'); return; }
         var s = a.start + a.credited * BLOCK_MS; a.credited++;
         var P = addBlock(s, s + BLOCK_MS, 'kronometre');
-        toast(P.full ? 'Pixel ortaya çıktı! 🎉' : 'Bir kare açıldı! ' + P.opened + '/' + CELLS, 'good'); beep(); sync();
-        renderHello(); renderTimer();
+        celebrate(P); sync(); renderMe(); renderTimer();
       }
       if (now - a.beat > 2000) { a.beat = now; save(); }
     }
@@ -193,16 +233,13 @@
   }
   setInterval(tick, 250);
 
-  /* Uygulamadan çıkma kuralı */
   document.addEventListener('visibilitychange', function () {
-    var a = st.active;
-    if (!a) return;
+    var a = st.active; if (!a) return;
     if (a.kind === 'break') { if (!document.hidden) { wake(); tick(); } return; }
     if (document.hidden) { a.leftAt = Date.now(); save(); }
     else if (a.leftAt && Date.now() - a.leftAt > LEAVE_GRACE_MS) fail('Çalışırken uygulamadan çıkıldı.');
     else { a.leftAt = null; save(); wake(); tick(); }
   });
-  /* Sayfa yeniden açıldığında yarım kalan çalışma (şarj bitti, uygulama kapandı) */
   (function recover() {
     var a = st.active; if (!a) return;
     st.active = null;
@@ -216,13 +253,15 @@
   })();
 
   var actx = null;
-  function beep() {
+  function ding() {
+    try { if (navigator.vibrate) navigator.vibrate([120, 80, 120]); } catch (e) {}
     try {
       actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-      [0, 0.18].forEach(function (d, i) {
-        var o = actx.createOscillator(), g = actx.createGain();
-        o.frequency.value = i ? 1320 : 880; o.type = 'square'; g.gain.value = 0.06;
-        o.connect(g); g.connect(actx.destination); o.start(actx.currentTime + d); o.stop(actx.currentTime + d + 0.12);
+      [[0, 784], [0.14, 988], [0.28, 1319]].forEach(function (n) {
+        var o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + n[0];
+        o.type = 'sine'; o.frequency.value = n[1];
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+        o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + 0.4);
       });
     } catch (e) {}
   }
@@ -231,15 +270,20 @@
   var sb = null, user = null, ready = null, syncing = false;
   function me() { return user ? user.id : 'me'; }
   function loadScript(src) { return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); }); }
-  function server() {
+  function client() {
+    if (sb) return Promise.resolve(sb);
+    return (window.supabase ? Promise.resolve() : loadScript(SUPA_JS)).then(function () {
+      sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' } });
+      return sb;
+    });
+  }
+  function server(noAnon) {
     if (!SERVER) return Promise.reject(new Error('yerel'));
     if (ready) return ready;
-    ready = (window.supabase ? Promise.resolve() : loadScript(SUPA_JS)).then(function () {
-      sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { auth: { persistSession: true, autoRefreshToken: true } });
-      return sb.auth.getSession();
-    }).then(function (r) {
+    ready = client().then(function () { return sb.auth.getSession(); }).then(function (r) {
       user = r.data && r.data.session ? r.data.session.user : null;
       if (user) return user;
+      if (noAnon) { ready = null; return null; }
       return sb.auth.signInAnonymously().then(function (r2) { if (r2.error) throw r2.error; user = r2.data.user; return user; });
     }).catch(function (e) { ready = null; throw e; });
     return ready;
@@ -252,6 +296,22 @@
       return sb.from('profiles').upsert({ id: user.id, nickname: p.nickname, bird: p.bird, color: p.color,
         exam: p.exam || null, city: p.city || null, school: p.school || null }).then(chk);
     }).then(function () { st.profileSynced = true; save(); });
+  }
+  /* Başka cihazdan e-postayla girildiyse profili ve kareleri sunucudan geri getir */
+  function restore() {
+    if (!user) return Promise.resolve(false);
+    return sb.from('profiles').select('nickname,bird,color,exam,city,school').eq('id', user.id).maybeSingle().then(chk).then(function (p) {
+      if (!p) return false;
+      st.profile = { nickname: p.nickname, bird: BIRDS.get(p.bird) ? p.bird : 'muhabbet-mavi', color: p.color, exam: p.exam || '', city: p.city || '', school: p.school || '' };
+      st.profileSynced = true; st.email = user.email || st.email;
+      return sb.from('blocks').select('client_id,started_at,ended_at,mode').order('started_at').limit(10000).then(chk).then(function (rows) {
+        var have = {}; st.blocks.forEach(function (b) { have[b.client_id] = 1; });
+        (rows || []).forEach(function (r) { if (!have[r.client_id]) st.blocks.push({ client_id: r.client_id, started_at: r.started_at, ended_at: r.ended_at, mode: r.mode, synced: true }); });
+        st.blocks.sort(function (a, b) { return a.started_at < b.started_at ? -1 : 1; });
+        st.canvasNo = Math.max(st.canvasNo, finishedCanvases() + 1);
+        save(); return true;
+      });
+    });
   }
   function sync() {
     renderSync();
@@ -267,22 +327,21 @@
           (res.rejected || []).forEach(function (r) { rej[r.client_id] = r.reason; });
           st.blocks.forEach(function (b) { if (acc[b.client_id]) b.synced = true; if (rej[b.client_id]) { b.synced = true; b.rejected = rej[b.client_id]; } });
           save();
-          if (st.blocks.some(function (b) { return !b.synced; })) return null;
         });
     }).then(function () { return refreshTeam(); })
       .catch(function (e) { console.warn('senkron', e); })
-      .then(function () { syncing = false; renderSync(); if (route() === 'calis') renderTimer(); });
+      .then(function () { syncing = false; renderSync(); });
   }
   window.addEventListener('online', sync);
   window.addEventListener('offline', renderSync);
   function renderSync() {
     var el = $('sync'), wait = st.blocks.filter(function (b) { return !b.synced; }).length;
     if (TEST) { el.textContent = 'Test modu'; el.className = 'sync off'; return; }
-    if (!SERVER) { el.textContent = 'Yerel mod · cihazda kayıtlı'; el.className = 'sync local'; return; }
-    if (!navigator.onLine) { el.textContent = 'Çevrimdışı · ' + wait + ' kare bekliyor'; el.className = 'sync off'; return; }
-    if (syncing) { el.textContent = 'Kaydediliyor...'; el.className = 'sync wait'; return; }
+    if (!SERVER) { el.textContent = 'Bu cihazda kayıtlı'; el.className = 'sync'; return; }
+    if (!navigator.onLine) { el.textContent = 'Çevrimdışı, ' + wait + ' kare bekliyor'; el.className = 'sync off'; return; }
+    if (syncing) { el.textContent = 'Kaydediliyor'; el.className = 'sync wait'; return; }
     if (wait) { el.textContent = wait + ' kare gönderilecek'; el.className = 'sync wait'; return; }
-    el.textContent = 'Her şey kayıtlı'; el.className = 'sync ok';
+    el.textContent = 'Kaydedildi'; el.className = 'sync ok';
   }
 
   /* ================= Ekip ================= */
@@ -300,8 +359,7 @@
     var t = st.team, s = st.teamState, col = {};
     s.members.forEach(function (m) { col[m.id] = m.color; });
     if (st.profile) col.me = st.profile.color;
-    var owners = s.opened.map(function (id) { return col[id] || '#999999'; });
-    drawCanvas(cv, t.side, Math.min(s.opened.length, t.cells), 'team:' + t.id, owners);
+    drawCanvas(cv, t.side, Math.min(s.opened.length, t.cells), 'team:' + t.id, 'pixel', s.opened.map(function (id) { return col[id] || '#999999'; }));
   }
 
   /* ================= Sayfalar ================= */
@@ -310,42 +368,45 @@
     var r = route();
     if (!st.profile && r !== 'pixel') r = 'profil';
     if (st.active && st.active.kind !== 'break' && r !== 'calis') { r = 'calis'; if (location.hash !== '#/') history.replaceState(null, '', '#/'); }
-    Array.prototype.forEach.call(document.querySelectorAll('#tabs a'), function (a) { a.classList.toggle('on', a.getAttribute('data-r') === r); });
+    ['tabs', 'bnav'].forEach(function (id) { Array.prototype.forEach.call($(id).children, function (a) { a.classList.toggle('on', a.getAttribute('data-r') === r); a.setAttribute('aria-current', a.getAttribute('data-r') === r ? 'page' : 'false'); }); });
     ({ calis: renderWork, ekip: renderTeam, siralama: renderBoard, profil: renderProfile, pixel: renderPixel }[r] || renderWork)();
-    renderHello(); renderSync(); window.scrollTo(0, 0);
+    renderMe(); renderSync(); paintSky(); window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', render);
-
-  function renderHello() {
-    var p = st.profile, el = $('hello');
-    if (!p) { el.innerHTML = '<div><strong>Çalış, Pixel\'i ortaya çıkar!</strong><small>Her 25 dakika, Pixel\'den bir kare.</small></div>'; return; }
-    var n = todayCount();
-    el.innerHTML = '<div><strong>Merhaba, ' + esc(p.nickname) + '!</strong><small>Bugün ' + n + ' kare · toplam ' + okBlocks().length + ' kare</small></div>' + birdBox(p.bird, p.color, 'av');
+  function renderMe() {
+    var p = st.profile, el = $('me');
+    el.hidden = !p; if (!p) return;
+    el.innerHTML = '<b>' + esc(p.nickname) + '</b>' + av(p.bird, p.color);
+    el.title = 'Bugün ' + todayCount() + ' kare';
   }
 
   /* ---------- Çalış ---------- */
+  function greet() {
+    var h = new Date().getHours(), n = todayCount(), g = st.goal;
+    if (n >= g) return 'Güneş doğdu. Bugünkü hedefin tamam.';
+    if (n === 0) return h < 6 ? 'Gece kuşu musun? İlk kareyi aç.' : h < 12 ? 'Günaydın. Gökyüzü hâlâ karanlık, ilk kareyi aç.' : h < 18 ? 'Gökyüzü seni bekliyor. İlk kareyi aç.' : 'Akşam çalışması başlasın. İlk kareyi aç.';
+    return 'Güneşin doğmasına ' + (g - n) + ' kare kaldı.';
+  }
   function renderWork() {
     var P = personal();
     $('view').innerHTML =
-      '<div class="cols">' +
-      '<section class="box"><h2>Pixel\'in Tuvali <small>Tuval ' + st.canvasNo + ' · <span id="pprog">' + P.opened + ' / ' + CELLS + '</span></small></h2><div class="in">' +
-      '<canvas id="pcanvas" class="pt" aria-label="Kişisel tuval"></canvas>' +
-      '<div class="barwrap"><div class="bar" id="pbar" style="width:' + (P.opened / CELLS * 100) + '%"></div></div>' +
-      '<div id="nextwrap"></div></div></section>' +
-      '<div class="stack timer">' +
-      '<section class="box"><h2>Zamanlayıcı</h2><div class="in">' +
-      '<div class="seg" id="seg"><button data-m="pomodoro">Pomodoro</button><button data-m="kronometre">Kronometre</button></div>' +
-      '<div class="mode" id="mode"></div><div class="clock" id="clock"></div><div class="sub" id="sub"></div>' +
-      '<button id="bStart" class="btn primary"></button>' +
-      '<button id="bBreak" class="btn blue" hidden></button>' +
-      '<button id="bStop" class="btn ghost" hidden></button>' +
-      '<p id="rule" class="rule" hidden><b>Dikkat:</b> Çalışırken uygulamadan çıkarsan ya da ekranı kapatırsan Pixel kaçar. Telefonu ekranı açık şekilde bir kenara bırak.</p>' +
-      '<div class="stats"><div><b id="sToday">0</b><span>bugün</span></div><div><b id="sTotal">0</b><span>toplam kare</span></div><div><b id="sHours">0</b><span>saat</span></div></div>' +
-      (TEST ? '<span class="testtag">TEST MODU · 1 sn = 25 dk</span>' : '') +
-      '<p class="tip" id="tip"></p>' +
-      '</div></section>' +
-      (st.team ? '<section class="box"><h2 class="green">' + esc(st.team.name) + '</h2><div class="in small">Açtığın her kare ekip tuvaline de ekleniyor. <a href="#/ekip">Ekip tuvaline bak »</a></div></section>' : '') +
-      '</div></div>';
+      '<h1 class="h1" id="greet">' + esc(greet()) + '</h1>' +
+      '<div class="work" style="margin-top:16px">' +
+      '<section>' +
+      '<div class="window"><canvas id="pcanvas" class="pt" aria-label="Tuval: ' + esc(birdName(P.bird)) + '"></canvas>' +
+      '<div class="windowbar"><strong id="pname"></strong><span id="pprog"></span></div><div class="meter"><i id="pbar"></i></div><div id="nextwrap"></div></div>' +
+      '</section>' +
+      '<section class="sheet" id="sheet">' +
+      '<div class="seg" id="seg" role="tablist"><button data-m="pomodoro" role="tab">Pomodoro</button><button data-m="kronometre" role="tab">Kronometre</button></div>' +
+      '<div class="clock" id="clock" aria-live="off"></div><div class="sub" id="sub"></div>' +
+      '<button id="bStart" class="btn go"></button>' +
+      '<button id="bBreak" class="btn soft" hidden></button>' +
+      '<button id="bStop" class="btn soft" hidden></button>' +
+      '<p id="rule" class="rule" hidden>Uygulamadan çıkarsan ya da ekranı kapatırsan Pixel kaçar ve kare açılmaz. Telefonu ekranı açık bırak.</p>' +
+      '<div class="today"><div>Bugün <b id="sToday">0</b> / ' + st.goal + ' kare</div><div class="dots" id="dots"></div></div>' +
+      (TEST ? '<span class="testtag">Test modu: 1 saniye 25 dakika sayılıyor</span>' : '') +
+      '</section></div>' +
+      (st.team ? '<div class="section"><div class="panel small">Açtığın her kare <b>' + esc(st.team.name) + '</b> ekibinin tuvaline de ekleniyor. <a href="#/ekip">Ekip tuvaline bak</a></div></div>' : '');
     $('seg').addEventListener('click', function (e) {
       var m = e.target.getAttribute('data-m'); if (!m || st.active) return;
       st.mode = m; save(); renderTimer();
@@ -356,104 +417,100 @@
     renderTimer();
   }
   function renderTimer() {
-    if (!$('clock')) { document.body.classList.toggle('focus', !!st.active && st.active.kind !== 'break'); return; }
-    var a = st.active, P = personal(), working = a && a.kind !== 'break';
+    var a = st.active, working = a && a.kind !== 'break';
     document.body.classList.toggle('focus', !!working);
-    Array.prototype.forEach.call($('seg').children, function (b) { b.classList.toggle('on', b.getAttribute('data-m') === st.mode); b.disabled = !!a; });
-    var watch = st.mode === 'kronometre';
-    $('mode').textContent = !a ? (P.full ? 'Pixel tamamlandı!' : 'Hazır') : a.kind === 'break' ? (a.long ? 'Uzun mola' : 'Mola') : a.kind === 'watch' ? 'Kronometre' : 'Odak';
+    if (!$('clock')) return;
+    var P = personal(), watch = st.mode === 'kronometre';
+    Array.prototype.forEach.call($('seg').children, function (b) { var on = b.getAttribute('data-m') === st.mode; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); b.disabled = !!a; });
     $('bStart').hidden = !!a || P.full;
-    $('bStart').textContent = watch ? 'Kronometreyi Başlat' : 'Pomodoro Başlat';
+    $('bStart').textContent = watch ? 'Kronometreyi başlat' : 'Pomodoro başlat';
     $('bBreak').hidden = !!a || P.full || !st.breakDue || st.mode !== 'pomodoro';
-    $('bBreak').textContent = (st.pomStreak % 4 === 0 ? '15 dk Uzun Mola' : '5 dk Mola');
+    $('bBreak').textContent = st.pomStreak % 4 === 0 ? '15 dakika uzun mola ver' : '5 dakika mola ver';
     $('bStop').hidden = !a;
-    $('bStop').textContent = a && a.kind === 'break' ? 'Molayı Bitir' : a && a.kind === 'watch' ? 'Bitir' : 'Vazgeç';
-    $('bStop').className = 'btn ' + (a && a.kind === 'watch' ? 'orange' : 'ghost');
+    $('bStop').textContent = a && a.kind === 'break' ? 'Molayı bitir' : a && a.kind === 'watch' ? 'Bitir' : 'Bırak';
     $('rule').hidden = !working;
-    $('tip').innerHTML = watch
-      ? '<b>Kronometre:</b> Saat ileri sayar. Kesintisiz geçen her 25 dakikada bir kare açılır. Bitir dediğinde yarım kalan süre sayılmaz.'
-      : '<b>Pomodoro:</b> 25 dakika çalış, bir kare aç, 5 dakika mola ver. Her 4 pomodoroda bir 15 dakika uzun mola.';
-    $('sToday').textContent = todayCount();
-    $('sTotal').textContent = okBlocks().length;
-    $('sHours').textContent = hours(okBlocks().length);
-    $('pprog').textContent = P.opened + ' / ' + CELLS;
+    $('greet').textContent = working ? (a.kind === 'watch' ? 'Odaktasın. Her 25 dakika bir kare.' : 'Odaktasın. Telefonu bırak.') : a ? 'Mola. Biraz su iç, gözlerini dinlendir.' : greet();
+    var n = todayCount();
+    $('sToday').textContent = n;
+    var dots = ''; for (var i = 0; i < Math.max(st.goal, Math.min(n, 28)); i++) dots += '<i class="' + (i < n ? (i < st.goal ? 'on' : 'over') : '') + '"></i>';
+    $('dots').innerHTML = dots;
+    $('pname').textContent = (P.full ? '' : 'Gizli kuş ') + (P.full || P.opened > CELLS * 0.6 ? birdName(P.bird) : '?');
+    $('pname').textContent = P.full ? birdName(P.bird) : P.opened > CELLS * 0.6 ? birdName(P.bird) + ' gibi görünüyor' : 'Tuval ' + st.canvasNo + ': gizli kuş';
+    $('pprog').textContent = P.opened + ' / ' + CELLS + ' kare';
     $('pbar').style.width = (P.opened / CELLS * 100) + '%';
     $('nextwrap').innerHTML = P.full
-      ? '<div class="info" style="margin-top:10px"><b>Pixel ortaya çıktı!</b> Bu tuvali bitirdin. ' +
-        (P.canNext ? '' : '') + '<button class="btn primary" id="bNext">Yeni Tuvale Başla</button><button class="btn orange" id="bCard2">Sezon Kartımı Oluştur</button></div>'
+      ? '<div style="padding:8px 6px 4px;display:grid;grid-template-columns:1fr 1fr;gap:10px"><button class="btn dark small" id="bCard2" style="width:100%">Kartımı oluştur</button><button class="btn go small" id="bNext" style="width:100%">Sıradaki kuşa geç</button></div>'
       : '';
-    if ($('bNext')) $('bNext').addEventListener('click', function () { st.canvasNo++; save(); pulseIdx = -1; renderTimer(); drawAll(); });
+    if ($('bNext')) $('bNext').addEventListener('click', function () { st.canvasNo++; save(); pulseIdx = -1; renderWork(); });
     if ($('bCard2')) $('bCard2').addEventListener('click', seasonCard);
-    paintClock(); drawAll();
+    paintClock(); drawAll(); paintSky();
   }
   function paintClock() {
     var c = $('clock'); if (!c) return;
     var a = st.active, sub = $('sub'), now = Date.now();
     c.classList.remove('long');
-    if (!a) { c.textContent = st.mode === 'kronometre' ? '0:00' : mmss(BLOCK_MS); sub.textContent = st.mode === 'kronometre' ? 'Her 25 dakika = 1 kare' : '25 dakika = 1 kare'; return; }
+    if (!a) { c.textContent = st.mode === 'kronometre' ? '0:00' : mmss(BLOCK_MS); sub.textContent = st.mode === 'kronometre' ? 'Kesintisiz her 25 dakika bir kare açar' : '25 dakika odak, bir kare'; return; }
     if (a.kind === 'watch') {
       var el = now - a.start; c.textContent = hms(el); if (el >= 3600e3) c.classList.add('long');
-      sub.textContent = 'Sonraki kareye ' + mmss(BLOCK_MS - el % BLOCK_MS) + (a.credited ? ' · bu oturumda ' + a.credited + ' kare' : '');
+      sub.textContent = 'Sıradaki kareye ' + mmss(BLOCK_MS - el % BLOCK_MS) + (a.credited ? ', bu oturumda ' + a.credited + ' kare' : '');
       return;
     }
     c.textContent = mmss(a.end - now);
-    sub.textContent = a.kind === 'break' ? 'Biraz su iç, gözlerini dinlendir.' : 'Bitince bir kare açılacak';
+    sub.textContent = a.kind === 'break' ? (a.long ? 'Uzun mola' : 'Kısa mola') : 'Bitince bir kare açılacak';
   }
 
   /* ---------- Ekibim ---------- */
+  function teamHowTo() {
+    return '<p class="muted" style="margin-bottom:6px">Ekip kurunca kişi sayısına göre büyüyen ortak bir tuval açılır. Herkesin açtığı her kare bu tuvale de eklenir. Ekip kalabalıklaştıkça Pixel daha büyük ve detaylı çıkar.</p>';
+  }
   function renderTeam() {
     var v = $('view');
     if (!SERVER) {
-      v.innerHTML = '<div class="cols"><section class="box"><h2>Ekibim</h2><div class="in"><p class="info">Ekipler, herkesin aynı tuvali birlikte açtığı ortak bir alan. Bunun için sitenin sunucuya bağlı olması gerekiyor.' +
-        (TEST ? ' Test modunda ekipler kapalı.' : ' Sunucu bağlanınca bu sayfa açılacak.') + '</p>' + teamHowTo() + '</div></section><div></div></div>';
+      v.innerHTML = '<h1 class="h1">Ekibim</h1><div class="section grid2"><div class="panel">' + teamHowTo() +
+        '<div class="note" style="margin-top:12px">' + (TEST ? 'Test modunda ekipler kapalı.' : 'Ekipler, site sunucuya bağlanınca açılacak.') + '</div></div><div></div></div>';
       return;
     }
     if (!st.team) {
       var code = st.pendingJoin || '';
-      v.innerHTML = '<div class="cols">' +
-        '<section class="box"><h2>Ekip Kur</h2><div class="in form">' + teamHowTo() +
-        '<label>Ekip adı</label><input type="text" id="tName" maxlength="30" placeholder="örn. Gece Kuşları">' +
-        '<label>Kaç kişisiniz? <small>(2-10)</small></label><select id="tSize">' + [2, 3, 4, 5, 6, 7, 8, 9, 10].map(function (n) { return '<option' + (n === 4 ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select>' +
-        '<p class="small muted" id="tCalc" style="margin-top:6px"></p>' +
-        '<button class="btn primary" id="tCreate">Ekibi Kur</button></div></section>' +
-        '<section class="box first"><h2 class="orange">Ekibe Katıl</h2><div class="in form">' +
-        '<label>Davet kodu</label><input type="text" id="tCode" maxlength="6" value="' + esc(code) + '" placeholder="örn. G3JN49" style="text-transform:uppercase;letter-spacing:3px;font-weight:bold">' +
-        '<button class="btn orange" id="tJoin">Katıl</button>' +
-        '<p class="small muted" style="margin-top:8px">Kodu ekibi kuran arkadaşından al. Bir seferde tek ekipte olabilirsin.</p></div></section></div>';
-      var calc = function () { var n = +$('tSize').value, s = Math.round(16 * Math.sqrt(n)); $('tCalc').textContent = 'Ekip tuvali ' + s * s + ' kare olacak. Herkes günde 4 saat çalışırsa yaklaşık 1 ayda Pixel ortaya çıkar.'; };
+      v.innerHTML = '<h1 class="h1">Ekibim</h1><p class="lead">Arkadaşlarınla tek bir büyük tuvali birlikte aç.</p>' +
+        '<div class="section grid2">' +
+        '<div class="panel light form"><h2 style="font:700 21px var(--display)">Ekibe katıl</h2>' +
+        '<label for="tCode">Davet kodu</label><input type="text" id="tCode" maxlength="6" value="' + esc(code) + '" placeholder="Örneğin G3JN49" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:4px;font-weight:700">' +
+        '<button class="btn go" id="tJoin">Ekibe katıl</button><p class="muted small" style="margin-top:10px">Kodu ekibi kuran arkadaşından al. Aynı anda bir ekipte olabilirsin.</p></div>' +
+        '<div class="panel form"><h2 style="font:700 21px var(--display)">Ekip kur</h2>' + teamHowTo() +
+        '<label for="tName">Ekip adı</label><input type="text" id="tName" maxlength="30" placeholder="Örneğin Gece Kuşları">' +
+        '<label for="tSize">Kaç kişisiniz?</label><select id="tSize">' + [2, 3, 4, 5, 6, 7, 8, 9, 10].map(function (n) { return '<option' + (n === 4 ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select>' +
+        '<p class="muted small" id="tCalc" style="margin-top:8px"></p><button class="btn line" id="tCreate">Ekibi kur</button></div></div>';
+      var calc = function () { var n = +$('tSize').value, s = Math.round(16 * Math.sqrt(n)); $('tCalc').textContent = 'Ekip tuvali ' + s * s + ' kare olur. Herkes günde 4 saat çalışırsa yaklaşık bir ayda tamamlanır.'; };
       $('tSize').addEventListener('change', calc); calc();
       $('tCreate').addEventListener('click', function () {
-        var name = $('tName').value.trim(); if (name.length < 2) return toast('Ekibe bir ad ver.', 'bad');
+        var name = $('tName').value.trim(); if (name.length < 2) return toast('Ekibine bir ad ver.', 'bad');
         busy(this); server().then(function () { return st.profileSynced ? null : pushProfile(); })
           .then(function () { return sb.rpc('create_team', { p_name: name, p_size: +$('tSize').value }).then(chk); })
-          .then(function () { return refreshTeam(); }).then(function () { toast('Ekip kuruldu! Kodu arkadaşlarına gönder.', 'good'); renderTeam(); })
+          .then(refreshTeam).then(function () { toast('Ekip kuruldu. Davet kodunu arkadaşlarına gönder.', 'good'); renderTeam(); })
           .catch(function (e) { toast(errText(e), 'bad'); renderTeam(); });
       });
       $('tJoin').addEventListener('click', function () {
         var c = $('tCode').value.trim().toUpperCase(); if (c.length !== 6) return toast('Davet kodu 6 karakter olmalı.', 'bad');
         busy(this); server().then(function () { return st.profileSynced ? null : pushProfile(); })
           .then(function () { return sb.rpc('join_team', { p_code: c }).then(chk); })
-          .then(function () { st.pendingJoin = null; save(); return refreshTeam(); }).then(function () { toast('Ekibe katıldın!', 'good'); renderTeam(); })
+          .then(function () { st.pendingJoin = null; save(); return refreshTeam(); }).then(function () { toast('Ekibe katıldın.', 'good'); renderTeam(); })
           .catch(function (e) { toast(errText(e), 'bad'); renderTeam(); });
       });
       return;
     }
     var t = st.team, s = st.teamState || { members: [], opened: [] }, opened = Math.min(s.opened.length, t.cells);
     var link = location.origin + location.pathname + '?ekip=' + t.code;
-    v.innerHTML = '<div class="cols">' +
-      '<section class="box"><h2>' + esc(t.name) + ' <small>' + opened + ' / ' + t.cells + ' kare</small></h2><div class="in">' +
-      '<canvas id="tcanvas" class="pt" aria-label="Ekip tuvali"></canvas>' +
-      '<div class="barwrap"><div class="bar" style="width:' + (opened / t.cells * 100) + '%"></div></div>' +
-      '<p class="small muted" style="margin-top:8px">Karelerin çerçeve rengi, o kareyi açan arkadaşının rengi. Bir kareye dokunursan kimin açtığını görürsün.</p></div></section>' +
-      '<div class="stack">' +
-      '<section class="box"><h2 class="orange">Davet Et</h2><div class="in" style="text-align:center"><div class="code">' + esc(t.code) + '</div>' +
-      '<p class="small muted" style="margin-top:8px">' + s.members.length + ' / ' + t.size + ' kişi</p>' +
-      (s.members.length < t.size ? '<button class="btn orange" id="tShare">Davet Linkini Gönder</button>' : '<p class="info small" style="margin-top:8px">Ekip dolu.</p>') + '</div></section>' +
-      '<section class="box"><h2 class="green">Üyeler</h2><div class="in" style="padding:0"><table class="list"><tbody>' +
+    v.innerHTML = '<h1 class="h1">' + esc(t.name) + '</h1><p class="lead">' + opened + ' / ' + t.cells + ' kare açıldı. Bir kareye dokun, kimin açtığını gör.</p>' +
+      '<div class="section work"><div class="window"><canvas id="tcanvas" class="pt" aria-label="Ekip tuvali"></canvas><div class="meter"><i style="width:' + (opened / t.cells * 100) + '%"></i></div></div>' +
+      '<div><div class="panel" style="text-align:center"><div class="muted small" style="margin-bottom:8px">Davet kodu</div><div class="code">' + esc(t.code) + '</div>' +
+      '<p class="muted small" style="margin-top:8px">' + s.members.length + ' / ' + t.size + ' kişi</p>' +
+      (s.members.length < t.size ? '<button class="btn go" id="tShare">Davet linkini gönder</button>' : '<p class="note small" style="margin-top:8px">Ekip dolu.</p>') + '</div>' +
+      '<div class="section"><h2>Üyeler</h2><ul class="list">' +
       s.members.slice().sort(function (a, b) { return b.count - a.count; }).map(function (m) {
-        return '<tr' + (m.id === me() ? ' class="me"' : '') + '><td><div class="who">' + birdBox(m.bird, m.color) + '<div>' + esc(m.nickname) + '</div></div></td><td class="num">' + m.count + ' kare</td></tr>';
-      }).join('') + '</tbody></table></div></section>' +
-      '<button class="btn ghost" id="tLeave">Ekipten Ayrıl</button></div></div>';
+        return '<li' + (m.id === me() ? ' class="mine"' : '') + '>' + av(m.bird, m.color, 40) + '<div class="name"><b>' + esc(m.nickname) + '</b></div><div class="num">' + m.count + '<small>kare</small></div></li>';
+      }).join('') + '</ul></div>' +
+      '<button class="btn line small" id="tLeave" style="margin-top:14px">Ekipten ayrıl</button></div></div>';
     drawAll();
     $('tcanvas').addEventListener('click', function (e) {
       var m = this._meta; if (!m) return;
@@ -461,21 +518,18 @@
       var idx = m.order.indexOf(y * m.side + x);
       if (idx < 0 || idx >= m.opened) return toast('Bu kare henüz açılmadı.');
       var uid = s.opened[idx], mem = s.members.filter(function (q) { return q.id === uid; })[0];
-      toast((mem ? mem.nickname : (uid === 'me' && st.profile ? st.profile.nickname : 'Biri')) + ' açtı.');
+      toast((mem ? mem.nickname : (st.profile ? st.profile.nickname : 'Biri')) + ' açtı.');
     });
     if ($('tShare')) $('tShare').addEventListener('click', function () {
-      var text = 'PixelTime\'da "' + t.name + '" ekibine katıl! Birlikte çalışıp Pixel\'i ortaya çıkaralım. Davet kodu: ' + t.code;
+      var text = 'PixelTime\'da "' + t.name + '" ekibine katıl, birlikte çalışıp Pixel\'i ortaya çıkaralım. Davet kodu: ' + t.code;
       if (navigator.share) navigator.share({ title: 'PixelTime', text: text, url: link }).catch(function () {});
       else { copy(text + ' ' + link); toast('Davet linki kopyalandı.', 'good'); }
     });
     $('tLeave').addEventListener('click', function () {
-      if (!confirm('Ekipten ayrılmak istediğine emin misin? Açtığın kareler ekip tuvalinde kalır.')) return;
+      if (!confirm('Ekipten ayrılmak istiyor musun? Açtığın kareler ekip tuvalinde kalır.')) return;
       busy(this); sb.rpc('leave_team').then(chk).then(function () { st.team = null; st.teamState = null; save(); renderTeam(); })
         .catch(function (e) { toast(errText(e), 'bad'); renderTeam(); });
     });
-  }
-  function teamHowTo() {
-    return '<p class="small" style="margin-bottom:6px"><b>Nasıl çalışır?</b> Ekip kurduğunda kişi sayısına göre büyük bir Pixel tuvali açılır. Ekipteki herkesin açtığı her kare bu tuvale eklenir. Ekip ne kadar kalabalıksa Pixel o kadar büyük ve detaylı çıkar.</p>';
   }
 
   /* ---------- Sıralama ---------- */
@@ -484,58 +538,59 @@
     var v = $('view');
     var scopes = [['kisi', 'Kişiler'], ['okul', 'Okullar'], ['sehir', 'Şehirler'], ['ekip', 'Ekipler']];
     var periods = [['hafta', 'Bu hafta'], ['ay', 'Bu ay'], ['hepsi', 'Tüm zamanlar']];
-    v.innerHTML = '<section class="box"><h2>Sıralama <small>Türkiye geneli</small></h2><div class="in">' +
-      '<div class="seg" id="bScope">' + scopes.map(function (s) { return '<button data-v="' + s[0] + '"' + (board.scope === s[0] ? ' class="on"' : '') + '>' + s[1] + '</button>'; }).join('') + '</div>' +
-      '<div class="seg" id="bPeriod">' + periods.map(function (s) { return '<button data-v="' + s[0] + '"' + (board.period === s[0] ? ' class="on"' : '') + '>' + s[1] + '</button>'; }).join('') + '</div>' +
-      '<div id="bList"></div></div></section>';
+    v.innerHTML = '<h1 class="h1">Sıralama</h1><p class="lead">Türkiye genelinde en çok kare açanlar.</p>' +
+      '<div class="section" style="max-width:720px"><div class="chips" id="bScope">' + scopes.map(function (s) { return '<button data-v="' + s[0] + '"' + (board.scope === s[0] ? ' class="on"' : '') + '>' + s[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="chips" id="bPeriod">' + periods.map(function (s) { return '<button data-v="' + s[0] + '"' + (board.period === s[0] ? ' class="on"' : '') + '>' + s[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="panel" id="bList"></div></div>';
     $('bScope').addEventListener('click', function (e) { var x = e.target.getAttribute('data-v'); if (x) { board.scope = x; renderBoard(); } });
     $('bPeriod').addEventListener('click', function (e) { var x = e.target.getAttribute('data-v'); if (x) { board.period = x; renderBoard(); } });
     var out = $('bList');
-    if (!SERVER) { out.innerHTML = '<p class="info">Sıralamalar, sitenin sunucuya bağlı olmasıyla açılır.' + (TEST ? ' Test modunda kapalı.' : '') + ' Şimdilik kendi istatistiklerin: <b>' + okBlocks().length + ' kare</b>, <b>' + hours(okBlocks().length) + ' saat</b>.</p>'; return; }
-    out.innerHTML = '<p class="muted">Yükleniyor...</p>';
+    if (!SERVER) { out.innerHTML = '<p class="muted">Sıralamalar site sunucuya bağlanınca açılacak.' + (TEST ? ' Test modunda kapalı.' : '') + ' Şimdiye kadar <b style="color:var(--text)">' + okBlocks().length + ' kare</b> açtın, yani ' + hours(okBlocks().length) + ' saat çalıştın.</p>'; return; }
+    out.innerHTML = '<p class="muted">Yükleniyor</p>';
     var since = new Date(), d = since.getDay();
     if (board.period === 'hafta') { since.setDate(since.getDate() - (d === 0 ? 6 : d - 1)); since.setHours(0, 0, 0, 0); }
     else if (board.period === 'ay') { since.setDate(1); since.setHours(0, 0, 0, 0); }
     else since = new Date(2020, 0, 1);
     server().then(function () { return sb.rpc('leaderboard', { p_scope: board.scope, p_since: since.toISOString() }).then(chk); })
       .then(function (rows) {
-        if (!rows || !rows.length) { out.innerHTML = '<p class="info">Bu dönemde henüz kimse kare açmamış. İlk sen ol!</p>'; return; }
+        if (!rows || !rows.length) { out.innerHTML = '<p class="muted">Bu dönemde henüz kimse kare açmadı. İlk sen aç.</p>'; return; }
         var mine = st.profile ? (board.scope === 'kisi' ? st.profile.nickname : board.scope === 'okul' ? st.profile.school : board.scope === 'sehir' ? st.profile.city : st.team && st.team.name) : null;
-        out.innerHTML = '<table class="list"><thead><tr><th>#</th><th>' + { kisi: 'Kişi', okul: 'Okul', sehir: 'Şehir', ekip: 'Ekip' }[board.scope] + '</th><th style="text-align:right">Kare</th></tr></thead><tbody>' +
-          rows.map(function (r, i) {
-            var isMe = mine && String(mine).toLocaleLowerCase('tr') === String(r.label).toLocaleLowerCase('tr');
-            return '<tr' + (isMe ? ' class="me"' : '') + '><td class="rank">' + (i + 1) + '</td><td><div class="who">' + (r.bird ? birdBox(r.bird, r.color) : '') +
-              '<div>' + esc(r.label) + (r.sub ? '<small>' + esc(r.sub) + '</small>' : '') + '</div></div></td><td class="num">' + r.total + '<small class="muted" style="display:block;font-weight:normal">' + hours(r.total) + ' saat</small></td></tr>';
-          }).join('') + '</tbody></table>';
-      }).catch(function (e) { out.innerHTML = '<p class="info">Sıralama şu an yüklenemedi. İnternet bağlantını kontrol et.</p>'; console.warn(e); });
+        out.innerHTML = '<ul class="list">' + rows.map(function (r, i) {
+          var isMe = mine && String(mine).toLocaleLowerCase('tr') === String(r.label).toLocaleLowerCase('tr');
+          return '<li' + (isMe ? ' class="mine"' : '') + '><span class="rank' + (i < 3 ? ' top' : '') + '">' + (i + 1) + '</span>' + (r.bird ? av(r.bird, r.color, 40) : '') +
+            '<div class="name"><b>' + esc(r.label) + '</b>' + (r.sub ? '<small>' + esc(r.sub) + '</small>' : '') + '</div><div class="num">' + r.total + '<small>' + hours(r.total) + ' saat</small></div></li>';
+        }).join('') + '</ul>';
+      }).catch(function (e) { out.innerHTML = '<p class="muted">Sıralama yüklenemedi. İnternet bağlantını kontrol edip sayfayı yenile.</p>'; console.warn(e); });
   }
 
   /* ---------- Profil ---------- */
   function renderProfile() {
-    var p = st.profile || { nickname: '', bird: 'muhabbet-gri', color: '#5f78b0', exam: '', city: '', school: '' };
-    var first = !st.profile;
-    var draft = { bird: p.bird, color: p.color };
-    $('view').innerHTML = '<div class="cols">' +
-      '<section class="box"><h2>' + (first ? 'PixelTime\'a Hoş Geldin!' : 'Profilim') + '</h2><div class="in form">' +
-      (first ? '<p class="info">Birkaç küçük bilgiyle başlayalım. Gerçek adını yazmana gerek yok, takma ad yeterli.</p>' : '') +
-      '<label>Takma adın</label><input type="text" id="fNick" maxlength="20" value="' + esc(p.nickname) + '" placeholder="örn. Mühendis" autocomplete="off">' +
-      '<label>Kuşunu seç</label><div class="birds" id="fBirds">' + BIRDS.list.map(function (b) {
-        return '<button type="button" data-b="' + b.id + '"' + (b.id === p.bird ? ' class="on"' : '') + ' title="' + esc(b.name) + '">' + BIRDS.svg(b.id) + esc(b.name) + '</button>';
+    var p = st.profile || { nickname: '', bird: 'muhabbet-mavi', color: '#ffd36e', exam: '', city: '', school: '' };
+    var first = !st.profile, draft = { bird: p.bird, color: p.color };
+    $('view').innerHTML =
+      (first ? '<h1 class="h1">Çalıştıkça bir kuş ortaya çıkar.</h1><p class="lead">Her 25 dakikalık odak, gizli bir kuşun bir karesini açar. İlk kuş Pixel. Başlamak için kendine bir takma ad ve bir kuş seç.</p>'
+        : '<h1 class="h1">Profilim</h1>') +
+      '<div class="section grid2"><div class="panel light form">' +
+      '<label for="fNick" style="margin-top:0">Takma ad <small>(gerçek adın gerekmez)</small></label><input type="text" id="fNick" maxlength="20" value="' + esc(p.nickname) + '" placeholder="Örneğin Mühendis" autocomplete="off">' +
+      '<label>Kuşun</label><div class="birds" id="fBirds">' + BIRDS.list.map(function (b) {
+        return '<button type="button" data-b="' + b.id + '"' + (b.id === p.bird ? ' class="on"' : '') + ' aria-label="' + esc(b.name) + '">' + BIRDS.svg(b.id) + esc(b.name) + '</button>';
       }).join('') + '</div>' +
-      '<label>Kare rengin <small>(sıralamada ve ekip tuvalinde kuşunun çerçevesi)</small></label><div class="colors" id="fColors">' +
-      DATA.colors.map(function (c) { return '<button type="button" data-c="' + c + '" style="background:' + c + '"' + (c === p.color ? ' class="on"' : '') + ' aria-label="' + c + '"></button>'; }).join('') +
-      '<input type="color" id="fColor" value="' + esc(p.color) + '" title="İstediğin rengi seç"></div>' +
-      '<div class="preview"><span class="av" id="fAv"></span><div><b id="fPrevName"></b><div class="small muted" id="fPrevBird"></div></div></div>' +
-      '<label>Hangi sınava hazırlanıyorsun? <small>(isteğe bağlı)</small></label><select id="fExam"><option value="">Seçme</option>' + DATA.exams.map(function (x) { return '<option' + (x === p.exam ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select>' +
-      '<div class="row2"><div><label>Şehir <small>(isteğe bağlı)</small></label><select id="fCity"><option value="">Seçme</option>' + DATA.cities.map(function (x) { return '<option' + (x === p.city ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
-      '<div><label>Okul <small>(isteğe bağlı)</small></label><input type="text" id="fSchool" maxlength="80" value="' + esc(p.school) + '" placeholder="örn. Ankara Fen Lisesi"></div></div>' +
-      '<p class="small muted" style="margin-top:6px">Şehir ve okul, sıralamalarda okulunu ve şehrini temsil etmen için. Boş bırakabilirsin.</p>' +
-      '<button class="btn primary" id="fSave">' + (first ? 'Başla!' : 'Kaydet') + '</button></div></section>' +
-      '<div class="stack">' + (first ? pixelStory() : statsBox()) + '</div></div>';
+      '<label>Rengin <small>(kuşunun halkası ve ekip tuvalindeki karelerin)</small></label><div class="colors" id="fColors">' +
+      DATA.colors.map(function (c) { return '<button type="button" data-c="' + c + '" style="background:' + c + '"' + (c === p.color ? ' class="on"' : '') + ' aria-label="Renk ' + c + '"></button>'; }).join('') +
+      '<label class="pick" title="İstediğin rengi seç"><input type="color" id="fColor" value="' + esc(p.color) + '" aria-label="İstediğin rengi seç"></label></div>' +
+      '<div class="preview"><span class="av" id="fAv"></span><div><b id="fPrevName"></b><div class="muted small" id="fPrevBird"></div></div></div>' +
+      '<label for="fExam">Hazırlandığın sınav <small>(isteğe bağlı)</small></label><select id="fExam"><option value="">Seçmedim</option>' + DATA.exams.map(function (x) { return '<option' + (x === p.exam ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select>' +
+      '<div class="row2"><div><label for="fCity">Şehir <small>(isteğe bağlı)</small></label><select id="fCity"><option value="">Seçmedim</option>' + DATA.cities.map(function (x) { return '<option' + (x === p.city ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
+      '<div><label for="fSchool">Okul <small>(isteğe bağlı)</small></label><input type="text" id="fSchool" maxlength="80" value="' + esc(p.school) + '" placeholder="Örneğin Ankara Fen Lisesi"></div></div>' +
+      '<label for="fGoal">Günlük hedefin</label><select id="fGoal">' + GOALS.map(function (g) { return '<option value="' + g + '"' + (g === st.goal ? ' selected' : '') + '>' + g + ' kare, yaklaşık ' + hours(g) + ' saat</option>'; }).join('') + '</select>' +
+      '<p class="muted small" style="margin-top:8px">Hedefine yaklaştıkça gökyüzü aydınlanır, hedefe ulaşınca güneş doğar.</p>' +
+      '<button class="btn dark" id="fSave">' + (first ? 'Başla' : 'Değişiklikleri kaydet') + '</button>' +
+      (first && SERVER ? '<p class="muted small" style="margin-top:14px;text-align:center">Başka bir cihazda hesabın var mı? <a href="#" id="fLogin" style="color:var(--night);font-weight:600">E-postanla giriş yap</a></p>' : '') +
+      '</div><div>' + (first ? intro() : statsBlock() + collectionBlock() + accountBlock()) + '</div></div>';
     function prev() {
-      $('fAv').innerHTML = BIRDS.svg(draft.bird); $('fAv').style.borderColor = draft.color;
+      $('fAv').innerHTML = BIRDS.svg(draft.bird, { branch: false }); $('fAv').style.setProperty('--ring', draft.color);
       $('fPrevName').textContent = $('fNick').value.trim() || 'Takma adın';
-      $('fPrevBird').textContent = (BIRDS.get(draft.bird) || {}).name || '';
+      $('fPrevBird').textContent = birdName(draft.bird);
     }
     $('fBirds').addEventListener('click', function (e) {
       var b = e.target.closest('button'); if (!b) return;
@@ -556,126 +611,175 @@
       var nick = $('fNick').value.trim().replace(/\s+/g, ' ');
       if (nick.length < 2) { $('fNick').focus(); return toast('Takma adın en az 2 harf olmalı.', 'bad'); }
       st.profile = { nickname: nick, bird: draft.bird, color: draft.color, exam: $('fExam').value, city: $('fCity').value, school: $('fSchool').value.trim().slice(0, 80) };
+      st.goal = +$('fGoal').value || 8;
       st.profileSynced = false; save();
       if (SERVER) pushProfile().then(sync).catch(function (e) { console.warn(e); });
-      toast(first ? 'Hoş geldin, ' + nick + '! İlk kareni açmaya hazırsın.' : 'Profil kaydedildi.', 'good');
+      toast(first ? 'Hoş geldin, ' + nick + '. İlk kareyi açmaya hazırsın.' : 'Profilin kaydedildi.', 'good');
       go(first && st.pendingJoin && SERVER ? '#/ekip' : first ? '#/' : location.hash || '#/');
     });
+    if ($('fLogin')) $('fLogin').addEventListener('click', function (e) { e.preventDefault(); emailModal('login'); });
     if ($('bCard')) $('bCard').addEventListener('click', seasonCard);
+    if ($('bBackup')) $('bBackup').addEventListener('click', function () { emailModal('backup'); });
     prev();
   }
+  function intro() {
+    return '<div class="panel"><h2 style="font:700 21px var(--display);margin-bottom:10px">Nasıl çalışır?</h2>' +
+      '<ul class="list"><li><div class="name"><b>25 dakika = 1 kare</b><small>Pomodoro ya da kronometreyle çalış. Her 25 dakika gizli kuşun bir karesini açar.</small></div></li>' +
+      '<li><div class="name"><b>Telefonu bırak</b><small>Çalışırken uygulamadan çıkarsan Pixel kaçar, o kare açılmaz.</small></div></li>' +
+      '<li><div class="name"><b>Kuş koleksiyonu</b><small>Bir tuvali bitirince kuş koleksiyonuna girer, sıradaki gizli kuş açılır.</small></div></li>' +
+      '<li><div class="name"><b>Ekip ve sıralama</b><small>Arkadaşlarınla büyük bir tuvali birlikte aç, okulunu ve şehrini yukarı taşı.</small></div></li></ul></div>';
+  }
   function stats() {
-    var b = okBlocks(), days = {}, best = 0, bestDay = null;
+    var b = okBlocks(), days = {}, best = 0;
     b.forEach(function (x) { var d = dayKey(x.started_at); days[d] = (days[d] || 0) + 1; });
-    Object.keys(days).forEach(function (d) { if (days[d] > best) { best = days[d]; bestDay = d; } });
+    Object.keys(days).forEach(function (d) { if (days[d] > best) best = days[d]; });
     var streak = 0, cur = new Date(); if (!days[dayKey(cur)]) cur.setDate(cur.getDate() - 1);
     while (days[dayKey(cur)]) { streak++; cur.setDate(cur.getDate() - 1); }
-    var watch = b.filter(function (x) { return x.mode === 'kronometre'; }).length;
-    return { total: b.length, hours: hours(b.length), best: best, bestDay: bestDay, streak: streak, days: Object.keys(days).length, watch: watch, canvases: Math.floor(b.length / CELLS), fails: st.fails };
+    return { total: b.length, hours: hours(b.length), best: best, streak: streak, birds: finishedCanvases(), fails: st.fails };
   }
-  function statsBox() {
+  function statsBlock() {
     var s = stats();
-    return '<section class="box"><h2 class="green">İstatistiklerim</h2><div class="in"><table class="list"><tbody>' +
-      '<tr><td>Toplam kare</td><td class="num">' + s.total + '</td></tr>' +
-      '<tr><td>Toplam çalışma</td><td class="num">' + s.hours + ' saat</td></tr>' +
-      '<tr><td>Seri</td><td class="num">' + s.streak + ' gün</td></tr>' +
-      '<tr><td>En verimli gün</td><td class="num">' + s.best + ' kare</td></tr>' +
-      '<tr><td>Tamamlanan Pixel</td><td class="num">' + s.canvases + '</td></tr>' +
-      '<tr><td>Kaçan Pixel</td><td class="num">' + s.fails + '</td></tr>' +
-      '</tbody></table><button class="btn orange" id="bCard">Sezon Kartımı Oluştur</button></div></section>';
+    return '<div class="stats"><div><b>' + s.total + '</b><span>kare</span></div><div><b>' + s.hours + '</b><span>saat</span></div><div><b>' + s.streak + '</b><span>günlük seri</span></div>' +
+      '<div><b>' + s.best + '</b><span>en iyi gün</span></div><div><b>' + s.birds + '</b><span>kuş</span></div><div><b>' + s.fails + '</b><span>kaçan Pixel</span></div></div>' +
+      '<button class="btn go" id="bCard">Sezon kartımı oluştur</button>';
   }
-  function pixelStory() {
-    return '<section class="box"><h2 class="orange">PixelTime nedir?</h2><div class="in small">' +
-      '<p>Çalıştığın her <b>25 dakika</b>, Pixel\'in tuvalinden bir kare açar. Bütün kareleri açınca Pixel ortaya çıkar.</p>' +
-      '<p><b>Pomodoro</b> ya da <b>kronometre</b> ile çalışabilirsin. Çalışırken uygulamadan çıkarsan Pixel kaçar, o kare açılmaz.</p>' +
-      '<p>Arkadaşlarınla <b>ekip</b> kurup büyük bir tuvali birlikte açabilir, okulunu ve şehrini <b>sıralamada</b> yukarı taşıyabilirsin.</p></div></section>';
+  function collectionBlock() {
+    var done = finishedCanvases(), show = Math.min(REVEAL.length, Math.max(done + 3, 6)), h = '';
+    for (var i = 0; i < show; i++) {
+      var id = REVEAL[i], got = i < done, next = i === done;
+      h += '<figure class="' + (got ? '' : 'locked') + (next ? ' next' : '') + '">' + BIRDS.svg(id) + '<figcaption>' + (got ? esc(birdName(id)) : next ? 'Şu an açılıyor' : 'Gizli') + '</figcaption></figure>';
+    }
+    return '<div class="section"><h2>Koleksiyonum</h2><p class="muted small" style="margin-bottom:10px">' + (done ? done + ' kuş topladın.' : 'Henüz kuş toplamadın. İlk tuvali bitirince Pixel koleksiyonuna girer.') + '</p><div class="collection">' + h + '</div></div>';
+  }
+  function accountBlock() {
+    if (!SERVER) return '';
+    return '<div class="section"><h2>Hesabını koru</h2><div class="panel small"><p class="muted">' +
+      (st.email ? 'Hesabın <b style="color:var(--text)">' + esc(st.email) + '</b> adresine bağlı. Başka cihazdan bu e-postayla girebilirsin.'
+        : 'Hesabın şu an sadece bu cihazda. Telefonun değişirse ya da tarayıcı verileri silinirse karelerin kaybolabilir. E-postanı ekle, her cihazdan gir.') +
+      '</p>' + (st.email ? '' : '<button class="btn line small" id="bBackup" style="margin-top:12px">E-posta ekle</button>') + '</div></div>';
+  }
+  function emailModal(kind) {
+    var m = $('modal');
+    m.innerHTML = '<div class="sheet form"><button class="x" aria-label="Kapat">✕</button><h2 style="font:700 22px var(--display);margin-bottom:6px">' + (kind === 'login' ? 'E-postanla giriş yap' : 'E-posta ekle') + '</h2>' +
+      '<p class="muted small">' + (kind === 'login' ? 'Daha önce hesabına eklediğin e-postayı yaz. Sana bir giriş linki göndereceğiz.' : 'E-postana bir onay linki göndereceğiz. Linke tıklayınca hesabın bu adrese bağlanır.') + '</p>' +
+      '<label for="mEmail">E-posta</label><input type="email" id="mEmail" autocomplete="email" placeholder="ornek@mail.com"><button class="btn dark" id="mSend">Link gönder</button></div>';
+    m.hidden = false;
+    var close = function () { m.hidden = true; m.innerHTML = ''; };
+    m.querySelector('.x').addEventListener('click', close);
+    m.onclick = function (e) { if (e.target === m) close(); };
+    $('mSend').addEventListener('click', function () {
+      var email = $('mEmail').value.trim();
+      if (!/^\S+@\S+\.\S+$/.test(email)) return toast('Geçerli bir e-posta yaz.', 'bad');
+      var btn = this; busy(btn);
+      var redirect = location.origin + location.pathname;
+      var p = kind === 'login'
+        ? client().then(function () { return sb.auth.signInWithOtp({ email: email, options: { shouldCreateUser: false, emailRedirectTo: redirect } }); })
+        : server().then(function () { return sb.auth.updateUser({ email: email }, { emailRedirectTo: redirect }); });
+      p.then(chk).then(function () { if (kind === 'backup') { st.email = email; save(); } close(); toast('Link gönderildi. E-postanı kontrol et.', 'good', 6000); })
+        .catch(function (e) { btn.disabled = false; btn.textContent = 'Link gönder'; toast(/not found|Signups not allowed/i.test(e.message || '') ? 'Bu e-postayla bir hesap bulunamadı.' : errText(e), 'bad'); });
+    });
   }
 
-  /* ---------- Pixel'in anısına ---------- */
+  /* ---------- Pixel'i tanı ---------- */
   function renderPixel() {
-    $('view').innerHTML = '<section class="box" style="max-width:560px;margin:0 auto"><h2>Pixel\'in anısına</h2><div class="in" style="text-align:center">' +
-      '<img src="logo.svg" alt="Pixel" style="width:220px;max-width:70%;margin:6px auto 10px;display:block">' +
-      '<p>PixelTime, adını sahibinin kuşu <b>Pixel</b>\'den alıyor.</p><p class="muted">Bu sitede açılan her kare, onu biraz daha ortaya çıkarıyor.</p>' +
-      '<a class="btn primary" href="#/" style="max-width:260px;margin:14px auto 0">Çalışmaya Dön</a></div></section>';
+    $('view').innerHTML = '<div class="grid2" style="align-items:center"><div class="window">' + BIRDS.svg('pixel', { scene: true }) + '</div>' +
+      '<div><h1 class="h1">Pixel</h1><p class="lead" style="margin-top:10px">PixelTime adını, sahibinin gri muhabbet kuşu Pixel\'den alıyor. Her yeni kullanıcının ilk tuvalinde ortaya çıkan kuş o.</p>' +
+      '<p class="lead" style="margin-top:10px">Burada açılan her kare, onu biraz daha görünür kılıyor.</p><a class="btn go" href="#/" style="max-width:280px;margin-top:20px">Çalışmaya dön</a></div></div>';
   }
 
   /* ================= Sezon kartı ================= */
   function seasonCard() {
     var p = st.profile; if (!p) return;
     var s = stats(), W = 1080, H = 1920, c = document.createElement('canvas'); c.width = W; c.height = H;
-    var g = c.getContext('2d'), F = '"Trebuchet MS",Verdana,Arial,sans-serif';
-    var bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#6ab6ee'); bg.addColorStop(0.5, '#2a80c8'); bg.addColorStop(1, '#16507f');
+    var g = c.getContext('2d'), FD = '"Bricolage Grotesque",system-ui,sans-serif', FB = 'Onest,system-ui,sans-serif';
+    var bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#16183a'); bg.addColorStop(0.55, '#3a2f7a'); bg.addColorStop(0.85, '#c8607a'); bg.addColorStop(1, '#ff8f6b');
     g.fillStyle = bg; g.fillRect(0, 0, W, H);
-    g.fillStyle = 'rgba(255,255,255,.07)'; for (var i = 0; i < 22; i++) g.fillRect(0, i * 90, W, 40);
-    function rr(x, y, w, h, r, fill, stroke) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); if (fill) { g.fillStyle = fill; g.fill(); } if (stroke) { g.strokeStyle = stroke; g.lineWidth = 6; g.stroke(); } }
-    g.textAlign = 'center'; g.fillStyle = '#fff';
-    g.font = 'bold 84px ' + F; g.shadowColor = 'rgba(0,0,0,.3)'; g.shadowBlur = 10; g.fillText('PixelTime', W / 2, 150);
-    g.font = 'bold 40px ' + F; g.fillStyle = '#ffd23f'; g.fillText('SEZON ' + SEASON + ' KARTIM', W / 2, 215); g.shadowBlur = 0;
-    rr(90, 270, W - 180, 1480, 36, '#ffffff');
-    var birdImg = new Image();
-    birdImg.onload = function () {
-      rr(W / 2 - 150, 320, 300, 300, 28, '#e3ebf3', p.color);
-      g.drawImage(birdImg, W / 2 - 140, 330, 280, 280);
-      g.fillStyle = '#23384d'; g.font = 'bold 72px ' + F; g.fillText(p.nickname, W / 2, 710);
-      g.fillStyle = '#5d7387'; g.font = '36px ' + F; g.fillText([p.exam, p.city].filter(Boolean).join(' · ') || (BIRDS.get(p.bird) || {}).name, W / 2, 765);
-      var rows = [[s.total, 'kare açtım'], [s.hours, 'saat çalıştım'], [s.streak, 'günlük seri'], [s.best, 'kare en iyi günümde']];
+    for (var i = 0; i < 70; i++) { g.fillStyle = 'rgba(255,255,255,' + (0.3 + (i % 5) * 0.12) + ')'; var sx = (hashStr('x' + i) % W), sy = (hashStr('y' + i) % 900); g.beginPath(); g.arc(sx, sy, 1.5 + (i % 3), 0, 7); g.fill(); }
+    var sun = g.createRadialGradient(W / 2, H + 120, 40, W / 2, H + 120, 760); sun.addColorStop(0, 'rgba(255,211,110,1)'); sun.addColorStop(0.35, 'rgba(255,143,107,.55)'); sun.addColorStop(1, 'rgba(255,143,107,0)');
+    g.fillStyle = sun; g.fillRect(0, 0, W, H);
+    g.textAlign = 'left'; g.fillStyle = '#f4f2ff';
+    g.font = '800 64px ' + FD; g.fillText('PixelTime', 90, 150);
+    g.font = '500 36px ' + FB; g.fillStyle = '#b9b4f0'; g.fillText('Sezon ' + SEASON + ' kartım', 90, 205);
+    var a = new Image(), done = 0, birdImg = new Image();
+    function draw() {
+      if (++done < 2) return;
+      g.save(); g.beginPath(); g.arc(W - 200, 160, 110, 0, 7); g.closePath(); g.fillStyle = '#e9ecf6'; g.fill(); g.lineWidth = 12; g.strokeStyle = p.color; g.stroke(); g.clip();
+      g.drawImage(a, W - 310, 50, 220, 220); g.restore();
+      g.fillStyle = '#f4f2ff'; g.font = '800 120px ' + FD; g.fillText(p.nickname, 90, 420);
+      g.font = '500 38px ' + FB; g.fillStyle = '#b9b4f0'; g.fillText([p.exam, p.city, p.school].filter(Boolean).join(', ') || birdName(p.bird), 90, 480);
+      var rows = [[s.total, 'kare açtım'], [s.hours, 'saat odaklandım'], [s.streak, 'gün üst üste'], [s.birds, 'kuş topladım']];
       rows.forEach(function (r, i) {
-        var x = 150 + (i % 2) * 400, y = 830 + Math.floor(i / 2) * 230;
-        rr(x, y, 380, 200, 24, '#eef6fc');
-        g.fillStyle = '#1d5f9c'; g.font = 'bold 96px ' + F; g.fillText(String(r[0]), x + 190, y + 112);
-        g.fillStyle = '#5d7387'; g.font = '32px ' + F; g.fillText(r[1], x + 190, y + 165);
+        var x = 90 + (i % 2) * 460, y = 580 + Math.floor(i / 2) * 260;
+        g.fillStyle = 'rgba(255,255,255,.08)'; rr(g, x, y, 440, 230, 40); g.fill();
+        g.fillStyle = i === 0 ? '#ffd36e' : '#f4f2ff'; g.font = '800 120px ' + FD; g.fillText(String(r[0]), x + 40, y + 140);
+        g.fillStyle = '#b9b4f0'; g.font = '500 34px ' + FB; g.fillText(r[1], x + 44, y + 195);
       });
-      var mini = document.createElement('canvas'); var P = personal();
-      drawCanvas(mini, N, s.total >= CELLS * st.canvasNo ? CELLS : P.opened, P.seed);
-      g.drawImage(mini, W / 2 - 170, 1300, 340, 340);
-      g.fillStyle = '#5d7387'; g.font = '32px ' + F;
-      g.fillText(s.canvases ? s.canvases + ' kez Pixel\'i ortaya çıkardım!' : 'Pixel\'in %' + Math.round(P.opened / CELLS * 100) + '\'ini ortaya çıkardım', W / 2, 1700);
-      g.fillStyle = '#fff'; g.font = 'bold 40px ' + F; g.fillText(st.team ? 'Ekibim: ' + st.team.name : 'Sen de katıl!', W / 2, 1830);
-      g.font = '30px ' + F; g.fillStyle = 'rgba(255,255,255,.85)'; g.fillText(location.host + location.pathname.replace(/index\.html$/, ''), W / 2, 1880);
+      var P = personal(), mini = document.createElement('canvas');
+      drawCanvas(mini, N, P.opened, P.seed, P.bird);
+      g.save(); rr(g, 90, 1130, 520, 520, 44); g.clip(); g.drawImage(mini, 90, 1130, 520, 520); g.restore();
+      g.fillStyle = '#f4f2ff'; g.font = '700 46px ' + FD;
+      wrap(P.full ? birdName(P.bird) + ' ortaya çıktı.' : 'Gizli kuşun %' + Math.round(P.opened / CELLS * 100) + '\'i açıldı.', 650, 1200, 340, 56);
+      g.fillStyle = '#ffe7ae'; g.font = '500 34px ' + FB; wrap(st.team ? st.team.name + ' ekibiyle çalışıyorum.' : 'Sen de katıl, birlikte çalışalım.', 650, 1420, 340, 44);
+      g.fillStyle = '#2a1408'; g.font = '600 36px ' + FB; g.textAlign = 'center';
+      g.fillText(location.host + location.pathname.replace(/index\.html$/, ''), W / 2, H - 90);
       showCard(c);
-    };
-    birdImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(BIRDS.svg(p.bird, 280));
+    }
+    function wrap(t, x, y, w, lh) { var ws = t.split(' '), line = ''; ws.forEach(function (wd) { var test = line ? line + ' ' + wd : wd; if (g.measureText(test).width > w && line) { g.fillText(line, x, y); line = wd; y += lh; } else line = test; }); g.fillText(line, x, y); }
+    a.onload = draw; birdImg.onload = draw;
+    a.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(BIRDS.svg(p.bird, { size: 400, branch: false }));
+    birdImg.src = a.src;
+    var P0 = personal(); birdImage(P0.bird);
   }
   function showCard(c) {
     var url = c.toDataURL('image/png'), m = $('modal');
-    m.innerHTML = '<section class="box"><h2 class="orange">Sezon Kartın <a href="#" id="mClose" style="color:#fff;text-decoration:none;font-size:18px">✕</a></h2><div class="in">' +
-      '<img src="' + url + '" alt="Sezon kartı"><button class="btn primary" id="mShare">Paylaş</button><a class="btn ghost" download="pixeltime-sezon-kartim.png" href="' + url + '">Resmi İndir</a></div></section>';
+    m.innerHTML = '<div class="sheet"><button class="x" aria-label="Kapat">✕</button><h2 style="font:700 22px var(--display);margin:0 40px 12px 0">Sezon kartın</h2>' +
+      '<img src="' + url + '" alt="Sezon kartın"><button class="btn go" id="mShare">Paylaş</button><a class="btn soft" download="pixeltime-kartim.png" href="' + url + '">Resmi indir</a></div>';
     m.hidden = false;
-    $('mClose').addEventListener('click', function (e) { e.preventDefault(); m.hidden = true; m.innerHTML = ''; });
-    m.addEventListener('click', function (e) { if (e.target === m) { m.hidden = true; m.innerHTML = ''; } });
+    var close = function () { m.hidden = true; m.innerHTML = ''; };
+    m.querySelector('.x').addEventListener('click', close);
+    m.onclick = function (e) { if (e.target === m) close(); };
     $('mShare').addEventListener('click', function () {
       c.toBlob(function (blob) {
-        var file = new File([blob], 'pixeltime-sezon-kartim.png', { type: 'image/png' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], title: 'PixelTime', text: 'PixelTime sezon kartım!' }).catch(function () {});
-        else { var a = document.createElement('a'); a.href = url; a.download = file.name; a.click(); toast('Kart indirildi. Hikâyende paylaşabilirsin!', 'good'); }
+        var file = new File([blob], 'pixeltime-kartim.png', { type: 'image/png' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], title: 'PixelTime', text: 'PixelTime sezon kartım' }).catch(function () {});
+        else { var a = document.createElement('a'); a.href = url; a.download = file.name; a.click(); toast('Kart indirildi. Hikâyende paylaşabilirsin.', 'good'); }
       });
     });
   }
 
   /* ================= Küçük yardımcılar ================= */
   function go(h) { if (location.hash === h || (h === '#/' && !location.hash)) render(); else location.hash = h; }
-  function busy(btn) { btn.disabled = true; btn.textContent = 'Bekle...'; }
+  function busy(btn) { btn.disabled = true; btn.textContent = 'Bekle'; }
   function copy(t) { try { navigator.clipboard.writeText(t); } catch (e) {} }
   function errText(e) {
     var m = (e && (e.message || e.error_description)) || '';
-    var map = { 'zaten bir ekiptesin': 'Zaten bir ekiptesin.', 'ekip bulunamadi': 'Bu kodla bir ekip bulunamadı.', 'ekip dolu': 'Bu ekip dolu.', 'profil yok': 'Önce profilini kaydet.', 'giris gerekli': 'Bağlantı kurulamadı, tekrar dene.', 'ekip 2-10 kisi olmali': 'Ekip 2-10 kişi olmalı.' };
-    for (var k in map) if (m.indexOf(k) >= 0) return map[k];
+    var map = { 'zaten bir ekiptesin': 'Zaten bir ekiptesin.', 'ekip bulunamadi': 'Bu kodla bir ekip bulunamadı. Kodu kontrol et.', 'ekip dolu': 'Bu ekip dolu.', 'profil yok': 'Önce profilini kaydet.', 'giris gerekli': 'Bağlantı kurulamadı. Tekrar dene.', 'ekip 2-10 kisi olmali': 'Ekip 2 ile 10 kişi arasında olmalı.', 'rate limit': 'Çok sık denedin. Biraz bekleyip tekrar dene.' };
+    for (var k in map) if (m.toLowerCase().indexOf(k) >= 0) return map[k];
     if (!navigator.onLine) return 'İnternet yok. Bağlanınca tekrar dene.';
-    return 'Bir sorun oldu, tekrar dene.';
+    return 'Bir sorun oldu. Tekrar dene.';
   }
 
   /* ================= Başlat ================= */
   var q = location.search.match(/[?&]ekip=([A-Za-z0-9]{6})/);
   if (q) { st.pendingJoin = q[1].toUpperCase(); save(); if (!st.team) location.hash = '#/ekip'; }
-  (function () {   /* BETA rozetine 5 kez dokun: test modu aç/kapat */
-    var n = 0, t = 0, el = document.querySelector('.beta'); if (!el) return;
-    el.style.cursor = 'pointer';
-    el.addEventListener('click', function () {
+  (function () {   /* logoya 5 kez dokun: test modu aç/kapat */
+    var n = 0, t = 0, el = document.querySelector('.brand img');
+    el.addEventListener('click', function (e) {
       var now = Date.now(); n = now - t < 800 ? n + 1 : 1; t = now;
-      if (n >= 5) { try { localStorage.setItem('pt_test', TEST ? '0' : '1'); } catch (e) {} toast(TEST ? 'Test modu kapandı' : 'Test modu açıldı'); setTimeout(function () { location.href = location.pathname; }, 700); }
+      if (n >= 3) e.preventDefault();
+      if (n >= 5) { try { localStorage.setItem('pt_test', TEST ? '0' : '1'); } catch (x) {} toast(TEST ? 'Test modu kapandı' : 'Test modu açıldı'); setTimeout(function () { location.href = location.pathname; }, 700); }
     });
   })();
   if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0 && !TEST) navigator.serviceWorker.register('sw.js').catch(function () {});
+  REVEAL.slice(0, 1).forEach(birdImage); birdImage(personal().bird);
   render();
-  if (SERVER && st.profile) sync();
+  if (SERVER) {
+    var fromLink = /[?&]code=/.test(location.search);
+    if (fromLink || (!st.profile)) server(true).then(function (u) {
+      if (!u) return;
+      if (/[?&]code=/.test(location.search)) history.replaceState(null, '', location.pathname + location.hash);
+      return (st.profile ? Promise.resolve(false) : restore()).then(function (ok) { if (ok) { toast('Tekrar hoş geldin, ' + st.profile.nickname + '.', 'good'); render(); } });
+    }).catch(function (e) { console.warn(e); });
+    if (st.profile) sync();
+  }
 })();
