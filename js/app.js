@@ -77,32 +77,58 @@
     return '<span class="av" style="' + ring(c1, c2) + (size ? ';width:' + size + 'px;height:' + size + 'px' : '') + '"><span class="ph" data-ph="' + esc(b.id) + '"><b>' + esc(b.name.charAt(0)) + '</b></span></span>';
   }
 
-  /* ================= Gerçek kuş fotoğrafları ================= */
-  var PHK = 'pt_photos_v2', phc = {};
+  /* ================= Gerçek kuş fotoğrafları =================
+     Wikimedia yalnızca standart genişlikleri (120, 250, 330, 500, 960…) serbestçe verir; başka genişlikler kısıtlanır. */
+  var PHK = 'pt_photos_v3', phc = {};
   try { phc = JSON.parse(localStorage.getItem(PHK)) || {}; } catch (e) {}
   var phWait = {};
-  function photo(id, w) {
-    w = w || 400;
-    var b = BIRDS.get(id); if (!b) return Promise.resolve(null);
-    if (b.src) return Promise.resolve(b.src);
-    if (b.local) return Promise.resolve('img/kuslar/' + b.id + '.jpg');
-    var t = b.wiki, sized = function (u) { return u ? u.replace(/\/(\d+)px-/, '/' + w + 'px-') : null; };
-    if (t in phc) return Promise.resolve(sized(phc[t]));
-    if (!phWait[t]) phWait[t] = fetch('https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(t))
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) { var u = j && j.thumbnail && j.thumbnail.source || null; phc[t] = u; try { localStorage.setItem(PHK, JSON.stringify(phc)); } catch (e) {} return u; })
-      .catch(function () { delete phWait[t]; return null; });
-    return phWait[t].then(sized);
+  function stdW(w) { return w <= 250 ? 250 : w <= 330 ? 330 : w <= 500 ? 500 : 960; }
+  function wikiThumb(t) {
+    if (t in phc) return Promise.resolve(phc[t]);
+    if (phWait[t]) return phWait[t];
+    var keep = function (u) { if (u) { phc[t] = u; try { localStorage.setItem(PHK, JSON.stringify(phc)); } catch (e) {} } return u; };
+    var rest = function () {
+      return fetch('https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(t))
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) { return j && j.thumbnail && j.thumbnail.source || null; });
+    };
+    var action = function () {
+      return fetch('https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&redirects=1&prop=pageimages&piprop=thumbnail&pithumbsize=500&titles=' + encodeURIComponent(t))
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) { var p = j && j.query && j.query.pages, k; for (k in p) if (p[k].thumbnail) return p[k].thumbnail.source; return null; });
+    };
+    phWait[t] = rest().catch(function () { return null; }).then(function (u) { return u || action().catch(function () { return null; }); })
+      .then(keep).then(function (u) { if (!u) delete phWait[t]; return u; });
+    return phWait[t];
+  }
+  /* Denenecek adresler: standart boyut, sonra Wikipedia'nın verdiği hali */
+  function photoUrls(id, w) {
+    var b = BIRDS.get(id); if (!b) return Promise.resolve([]);
+    if (b.src) return Promise.resolve([b.src]);
+    if (b.local) return Promise.resolve(['img/kuslar/' + b.id + '.jpg']);
+    return wikiThumb(b.wiki).then(function (u) {
+      if (!u) return [];
+      var s = /\/\d+px-/.test(u) ? u.replace(/\/\d+px-/, '/' + stdW(w || 330) + 'px-') : u;
+      return s === u ? [u] : [s, u];
+    });
+  }
+  function photo(id, w) { return photoUrls(id, w).then(function (l) { return l[0] || null; }); }
+  function loadFirst(urls, cors) {
+    return new Promise(function (ok) {
+      (function next(i) {
+        if (i >= urls.length) return ok(null);
+        var im = new Image(); if (cors) im.crossOrigin = 'anonymous'; im.decoding = 'async';
+        im.onload = function () { ok(im); }; im.onerror = function () { next(i + 1); }; im.src = urls[i];
+      })(0);
+    });
   }
   var lazyIO = 'IntersectionObserver' in window ? new IntersectionObserver(function (es) {
     es.forEach(function (en) { if (en.isIntersecting) { lazyIO.unobserve(en.target); loadPh(en.target, en.target.getAttribute('data-lz')); } });
   }, { rootMargin: '300px' }) : null;
   function loadPh(el, id) {
-    photo(id, el.classList.contains('big') ? 640 : 320).then(function (u) {
-      if (!u) return;
-      var im = new Image(); im.alt = ''; im.decoding = 'async';
-      im.onload = function () { el.innerHTML = ''; el.appendChild(im); el.classList.add('ok'); };
-      im.src = u;
+    photoUrls(id, 330).then(function (l) { return loadFirst(l, false); }).then(function (im) {
+      if (!im) return;
+      im.alt = ''; el.innerHTML = ''; el.appendChild(im); el.classList.add('ok');
     });
   }
   function hydrate(root) {
@@ -132,12 +158,9 @@
   function birdImage(id) {
     if (imgs[id]) return imgs[id].ready ? imgs[id].img : null;
     var rec = imgs[id] = { img: null, ready: false, failed: false };
-    photo(id, 800).then(function (u) {
-      if (!u) { rec.failed = true; return; }
-      var im = new Image(); im.crossOrigin = 'anonymous';
-      im.onload = function () { rec.img = im; rec.ready = true; fullCache = {}; drawAll(); };
-      im.onerror = function () { rec.failed = true; };
-      im.src = u;
+    photoUrls(id, 960).then(function (l) { return loadFirst(l, true); }).then(function (im) {
+      if (!im) { rec.failed = true; delete imgs[id]; return; }
+      rec.img = im; rec.ready = true; fullCache = {}; drawAll();
     });
     return null;
   }
@@ -208,6 +231,8 @@
   }
   function startWork() {
     if (st.active || !canWork()) return;
+    var done = finishedCanvases();
+    if (personal().full) { st.canvasNo = Math.max(st.canvasNo + 1, done + 1); pulseIdx = -1; save(); renderWork(); }
     var now = Date.now(); st.breakDue = false;
     st.active = st.mode === 'kronometre'
       ? { kind: 'watch', start: now, credited: 0, beat: now, leftAt: null }
@@ -475,8 +500,8 @@
     if (!$('clock')) return;
     var P = personal(), watch = st.mode === 'kronometre', b = bird(P.bird);
     Array.prototype.forEach.call($('seg').children, function (x) { var on = x.getAttribute('data-m') === st.mode; x.classList.toggle('on', on); x.setAttribute('aria-checked', on); x.disabled = !!a; });
-    $('bStart').hidden = !!a || P.full;
-    $('bStart').textContent = watch ? 'Kronometreyi başlat' : 'Pomodoro başlat';
+    $('bStart').hidden = !!a;
+    $('bStart').textContent = (P.full ? 'Sıradaki portreye geç ve ' : '') + (watch ? 'kronometreyi başlat' : 'pomodoro başlat'); $('bStart').textContent = $('bStart').textContent.charAt(0).toUpperCase() + $('bStart').textContent.slice(1);
     $('bBreak').hidden = !!a || P.full || !st.breakDue || st.mode !== 'pomodoro';
     $('bBreak').textContent = st.pomStreak % 4 === 0 ? '15 dakika uzun mola' : '5 dakika mola';
     $('bStop').hidden = !a;
@@ -849,7 +874,7 @@
     var p = st.profile; if (!p) return;
     var s = stats(), P = personal(), src = document.createElement('canvas');
     drawCanvas(src, N, P.opened, P.seed, P.bird);
-    Promise.all([loadImg('img/pixel-logo-kucuk.svg'), photo(p.bird, 400).then(function (u) { if (!u) return null; return new Promise(function (ok) { var i = new Image(); i.crossOrigin = 'anonymous'; i.onload = function () { ok(i); }; i.onerror = function () { ok(null); }; i.src = u; }); })]).then(function (r) {
+    Promise.all([loadImg('img/pixel-logo-kucuk.svg'), photoUrls(p.bird, 500).then(function (l) { return loadFirst(l, true); })]).then(function (r) {
       var logo = r[0], pic = r[1], W = 1080, H = 1920, k = baseCard(W, H, logo), g = k.g;
       g.fillStyle = '#5b5f66'; g.font = '400 32px ' + FU; g.textAlign = 'right'; g.fillText('Sezon ' + SEASON + ' kartı', W - 90, 160); g.textAlign = 'left';
       var cx = 190, cy = 360, R = 100;

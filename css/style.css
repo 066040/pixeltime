@@ -65,7 +65,7 @@ body.guest .tabs,body.guest .bnav{visibility:hidden}
 
 /* Kuş avatarı: gerçek fotoğraf, tek renk ya da gradyan kenarlık */
 .av{display:inline-block;flex:0 0 auto;width:40px;height:40px;border-radius:50%;padding:3px;background:linear-gradient(135deg,var(--r1),var(--r2))}
-.av>.ph{display:block;width:100%;height:100%;border-radius:50%;overflow:hidden;background:var(--rule2);box-shadow:0 0 0 2px var(--white)}
+.av>.ph{display:flex;width:100%;height:100%;border-radius:50%;overflow:hidden;background:var(--rule2);box-shadow:0 0 0 2px var(--white)}
 .ph{display:flex;align-items:center;justify-content:center;color:var(--muted);font:600 15px var(--serif)}
 .ph img{width:100%;height:100%;object-fit:cover;display:block}
 .ph.ok b{display:none}
