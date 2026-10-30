@@ -107,7 +107,7 @@
       s.push('<circle cx="30" cy="29" r="5" fill="' + (b.eyeC || '#f2a81c') + '"/><circle cx="30" cy="29" r="2.6" fill="#111"/><circle cx="31" cy="28" r=".9" fill="#fff"/>');
       s.push('<circle cx="41" cy="29" r="5" fill="' + (b.eyeC || '#f2a81c') + '"/><circle cx="41" cy="29" r="2.6" fill="#111"/><circle cx="42" cy="28" r=".9" fill="#fff"/>');
     } else {
-      s.push('<circle cx="36" cy="25" r="3.4" fill="#16181b"/><circle cx="37.3" cy="23.8" r="1.1" fill="#fff"/>');
+      s.push('<circle cx="36" cy="25" r="4.6" fill="#ffffff"/><circle cx="36" cy="25" r="3.6" fill="#111214"/><circle cx="37.4" cy="23.6" r="1.2" fill="#ffffff"/>');
       if (b.brow) s.push('<path d="M31 21 L42 22" stroke="' + b.wing + '" stroke-width="2.2" stroke-linecap="round"/>');
     }
 

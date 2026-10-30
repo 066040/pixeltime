@@ -1,5 +1,6 @@
 /* PixelTime — 2005-2010 web tarzı */
 :root{
+  color-scheme:only light;
   --font:"Trebuchet MS","Lucida Grande","Lucida Sans Unicode",Verdana,Arial,sans-serif;
   --blue:#2f84cc;--blue-dark:#1d5f9c;--line:#b9d3e8;--ink:#23384d;--muted:#5d7387;
 }
