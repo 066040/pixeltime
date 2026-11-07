@@ -13,6 +13,9 @@
   var DAILY_MAX = TEST ? 9999 : 28;               // günde en fazla 28 kare (~12 saat)
   var N = TEST ? 4 : 16, CELLS = N * N;           // kişisel tuval (test: 16 kare)
   var KEY = TEST ? 'pixeltime_test' : 'pixeltime_v2';
+  /* Maildeki linkten dönüş: #access_token=...&type=recovery gibi. Supabase'in hazır mailleri sadece link içeriyor. */
+  var AUTH_HASH = /(^|[#&])(access_token|error_description|error_code)=/.test(location.hash) ? location.hash : null;
+  var AUTH_TYPE = AUTH_HASH ? (AUTH_HASH.match(/[#&]type=([a-z_]+)/) || [])[1] : null;
   var SERVER = !TEST && !!(CFG.supabaseUrl && CFG.supabaseKey);
   var SUPA_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
   var SEASON = 1;
@@ -386,7 +389,7 @@
   function client() {
     if (sb) return Promise.resolve(sb);
     return (window.supabase ? Promise.resolve() : loadScript(SUPA_JS)).then(function () {
-      sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' } });
+      sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' } });
       watchAuth();
       return sb;
     });
@@ -506,7 +509,7 @@
   }
 
   /* ================= Sayfalar ================= */
-  function route() { var h = location.hash.replace(/^#\/?/, '').split('?')[0]; return h || 'calis'; }
+  function route() { var h = location.hash.replace(/^#\/?/, '').split('?')[0]; if (/^(access_token|error|type)=|&/.test(h)) return 'calis'; return h || 'calis'; }
   function render() {
     var r = route();
     if (!st.profile && r !== 'pixel' && r !== 'yardim') r = 'profil';
@@ -924,7 +927,7 @@
      Akış: herkes önce anonim hesapla başlar (kayıtlar kaybolmasın diye). "Hesabını kaydet" anonim hesaba
      e-posta + şifre bağlar. Doğrulama hem linkle hem 6 haneli kodla çalışır; iPhone'da ana ekrana eklenmiş
      uygulamada link Safari'de açıldığı için kod daha güvenli yoldur. */
-  var AUTH_TITLES = { register: 'Hesabını kaydet', login: 'Giriş yap', forgot: 'Şifremi unuttum', code: 'Kodla giriş', password: 'Yeni şifre belirle' };
+  var AUTH_TITLES = { register: 'Hesabını kaydet', login: 'Giriş yap', forgot: 'Şifremi unuttum', code: 'Şifresiz giriş', password: 'Yeni şifre belirle' };
   function pwOk(a, b) {
     if (a.length < 8) { toast('Şifre en az 8 karakter olmalı.', 'bad'); return false; }
     if (b != null && a !== b) { toast('Şifreler aynı değil.', 'bad'); return false; }
@@ -938,6 +941,7 @@
     if (/already (been )?registered|already exists|email_exists/.test(m)) return 'Bu e-postayla zaten bir hesap var. Giriş yapmayı dene.';
     if (/rate limit|too many|security purposes|over_email_send_rate_limit/.test(m)) return 'Çok sık denedin. Bir dakika bekleyip tekrar dene.';
     if (/signups not allowed|user not found|not found/.test(m)) return 'Bu e-postayla bir hesap bulunamadı.';
+    if (/henuz dogrulanmadi/.test(m)) return 'E-postan henüz doğrulanmamış görünüyor. Maildeki linke tıkladığından emin ol.';
     if (/should be different|same_password/.test(m)) return 'Yeni şifre eskisinden farklı olmalı.';
     if (/weak|password should/.test(m)) return 'Şifre çok zayıf. Harf ve rakam karıştır, en az 8 karakter olsun.';
     return errText(e);
@@ -969,11 +973,16 @@
     function bind(id, fn) { var b = $(id); b.addEventListener('click', function () { fn(b); }); m.querySelector('.sheet').addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); b.click(); } }); }
     function code() { return ($('aCode').value || '').replace(/\D/g, ''); }
     /* Doğrulama kodu adımı: ok(code) kodu sunucuda doğrular */
-    function codeStep(title, lead, verify, resend) {
-      shell(title, '<p class="muted small">' + lead + '</p>' + codeField() + '<button type="button" class="btn primary" id="aGo">Doğrula</button>',
-        '<a href="#" id="aResend">Kodu tekrar gönder</a>');
+    /* Mailde link varsa linke tıklanır; kod varsa kod yazılır. linkDone: linke tıklandıktan sonra burada devam etmek için. */
+    function codeStep(title, lead, verify, resend, linkDone) {
+      shell(title, '<p class="muted small">' + lead + '</p>' +
+        (linkDone ? '<p class="small">Maildeki <b>linke tıkla</b>. Link başka bir uygulamada ya da sekmede açılabilir, sorun değil. Sonra buraya dönüp aşağıdaki butona bas.</p><button type="button" class="btn primary" id="aLink">Linke tıkladım, devam et</button>' +
+          '<details class="codebox"><summary>Mailde 6 haneli kod mu var?</summary>' + codeField() + '<button type="button" class="btn ghost" id="aGo">Kodu doğrula</button></details>'
+          : codeField() + '<button type="button" class="btn primary" id="aGo">Doğrula</button>'),
+        '<a href="#" id="aResend">Tekrar gönder</a>');
+      if (linkDone) $('aLink').addEventListener('click', function () { run(this, 'Linke tıkladım, devam et', linkDone()).catch(function () {}); });
       bind('aGo', function (b) { var c = code(); if (c.length < 6) return toast('Kodu eksiksiz yaz.', 'bad'); run(b, 'Doğrula', verify(c)).catch(function () {}); });
-      $('aResend').addEventListener('click', function (e) { e.preventDefault(); resend().then(function (r) { if (r && r.error) throw r.error; toast('Yeni kod gönderildi.', 'good'); }).catch(function (er) { toast(authErr(er), 'bad'); }); });
+      $('aResend').addEventListener('click', function (e) { e.preventDefault(); resend().then(function (r) { if (r && r.error) throw r.error; toast('Tekrar gönderildi.', 'good'); }).catch(function (er) { toast(authErr(er), 'bad'); }); });
     }
     function signedIn(msg) {
       return sb.auth.getUser().then(function (r) {
@@ -985,47 +994,54 @@
 
     if (kind === 'register') {
       shell(AUTH_TITLES.register, '<p class="muted small">Kareler, portreler ve saatlerin bu hesaba bağlanır. Telefonun değişse bile e-posta ve şifrenle her cihazdan girersin.</p>' +
-        emailField() + pwFields('Şifre', true) + '<button type="button" class="btn primary" id="aGo">Kodu gönder</button>',
+        emailField() + pwFields('Şifre', true) + '<button type="button" class="btn primary" id="aGo">Doğrulama maili gönder</button>',
         'Zaten hesabın var mı? <a href="#" data-go="login">Giriş yap</a>');
       bind('aGo', function (b) {
         var em = readEmail(); if (!em) return; var pw = $('aPw').value; if (!pwOk(pw, $('aPw2').value)) return;
         email = em; st.needPw = true; save();
-        run(b, 'Kodu gönder', server().then(function () { return sb.auth.updateUser({ email: em }, { emailRedirectTo: location.origin + location.pathname }); })).then(function () {
-          codeStep('E-postanı doğrula', '<b>' + esc(em) + '</b> adresine bir kod gönderdik.',
+        run(b, 'Doğrulama maili gönder', server().then(function () { return sb.auth.updateUser({ email: em }, { emailRedirectTo: location.origin + location.pathname }); })).then(function () {
+          codeStep('E-postanı doğrula', '<b>' + esc(em) + '</b> adresine bir doğrulama maili gönderdik. Gelmediyse spam/gereksiz klasörüne bak.',
             function (c) { return sb.auth.verifyOtp({ email: em, token: c, type: 'email_change' }).then(function (r) { if (r.error) throw r.error; return sb.auth.updateUser({ password: pw }); }).then(function (r) { if (r.error) throw r.error; return signedIn('Hesabın kaydedildi. Artık her cihazdan girebilirsin.'); }); },
-            function () { return sb.auth.updateUser({ email: em }); });
+            function () { return sb.auth.updateUser({ email: em }); },
+            function () {
+              return sb.auth.getUser().then(function (r) {
+                var u = r.data && r.data.user;
+                if (!u || u.email !== em) throw new Error('henuz dogrulanmadi');
+                return sb.auth.updateUser({ password: pw });
+              }).then(function (r) { if (r.error) throw r.error; return signedIn('Hesabın kaydedildi. Artık her cihazdan girebilirsin.'); });
+            });
         }).catch(function () {});
       });
     } else if (kind === 'login') {
       shell(AUTH_TITLES.login, emailField() + '<div class="field"><label for="aPw">Şifre</label><input type="password" id="aPw" autocomplete="current-password"></div>' +
         '<button type="button" class="btn primary" id="aGo">Giriş yap</button>',
-        '<a href="#" data-go="forgot">Şifremi unuttum</a> · <a href="#" data-go="code">Şifresiz, kodla gir</a>');
+        '<a href="#" data-go="forgot">Şifremi unuttum</a> · <a href="#" data-go="code">Şifresiz, mail linkiyle gir</a>');
       bind('aGo', function (b) {
         var em = readEmail(); if (!em) return; var pw = $('aPw').value; if (!pw) return toast('Şifreni yaz.', 'bad');
         run(b, 'Giriş yap', client().then(function () { return sb.auth.signInWithPassword({ email: em, password: pw }); }))
           .then(function () { return signedIn('Tekrar hoş geldin.'); }).catch(function () {});
       });
     } else if (kind === 'code') {
-      shell(AUTH_TITLES.code, '<p class="muted small">E-postana tek kullanımlık bir kod gönderelim, şifresiz gir.</p>' + emailField() + '<button type="button" class="btn primary" id="aGo">Kodu gönder</button>',
+      shell(AUTH_TITLES.code, '<p class="muted small">E-postana tek kullanımlık bir giriş linki gönderelim, şifresiz gir.</p>' + emailField() + '<button type="button" class="btn primary" id="aGo">Linki gönder</button>',
         '<a href="#" data-go="login">Şifreyle giriş</a>');
       bind('aGo', function (b) {
         var em = readEmail(); if (!em) return;
         var send = function () { return sb.auth.signInWithOtp({ email: em, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname } }); };
-        run(b, 'Kodu gönder', client().then(send)).then(function () {
-          codeStep('Kodu gir', '<b>' + esc(em) + '</b> adresine bir kod gönderdik.',
+        run(b, 'Linki gönder', client().then(send)).then(function () {
+          codeStep('Mailine bak', '<b>' + esc(em) + '</b> adresine bir giriş linki gönderdik. Linke tıklayınca açılan sayfada giriş yapmış olursun. Mailde kod varsa aşağıya yaz.',
             function (c) { return sb.auth.verifyOtp({ email: em, token: c, type: 'email' }).then(function (r) { if (r.error) throw r.error; return signedIn('Tekrar hoş geldin.'); }); }, send);
         }).catch(function () {});
       });
     } else if (kind === 'forgot') {
-      shell(AUTH_TITLES.forgot, '<p class="muted small">E-postana bir kod gönderelim, yeni şifreni belirle.</p>' + emailField() + '<button type="button" class="btn primary" id="aGo">Kodu gönder</button>',
+      shell(AUTH_TITLES.forgot, '<p class="muted small">E-postana bir link gönderelim. Linke tıklayınca yeni şifreni belirleyeceğin pencere açılır.</p>' + emailField() + '<button type="button" class="btn primary" id="aGo">Linki gönder</button>',
         '<a href="#" data-go="login">Girişe dön</a>');
       bind('aGo', function (b) {
         var em = readEmail(); if (!em) return;
         var send = function () { return sb.auth.resetPasswordForEmail(em, { redirectTo: location.origin + location.pathname }); };
-        run(b, 'Kodu gönder', client().then(send)).then(function () {
-          shell('Yeni şifre', '<p class="muted small"><b>' + esc(em) + '</b> adresine bir kod gönderdik.</p>' + codeField() + pwFields('Yeni şifre', true) +
-            '<button type="button" class="btn primary" id="aGo">Şifreyi değiştir</button>', '<a href="#" id="aResend">Kodu tekrar gönder</a>');
-          $('aResend').addEventListener('click', function (e) { e.preventDefault(); send().then(function (r) { if (r && r.error) throw r.error; toast('Yeni kod gönderildi.', 'good'); }).catch(function (er) { toast(authErr(er), 'bad'); }); });
+        run(b, 'Linki gönder', client().then(send)).then(function () {
+          shell('Mailine bak', '<p class="muted small"><b>' + esc(em) + '</b> adresine bir link gönderdik. Linke tıkla, açılan sayfada yeni şifreni belirle.</p><details class="codebox"><summary>Mailde 6 haneli kod mu var?</summary>' + codeField() + pwFields('Yeni şifre', true) +
+            '<button type="button" class="btn primary" id="aGo">Şifreyi değiştir</button></details>', '<a href="#" id="aResend">Linki tekrar gönder</a>');
+          $('aResend').addEventListener('click', function (e) { e.preventDefault(); send().then(function (r) { if (r && r.error) throw r.error; toast('Tekrar gönderildi.', 'good'); }).catch(function (er) { toast(authErr(er), 'bad'); }); });
           bind('aGo', function (b2) {
             var c = code(), pw = $('aPw').value; if (c.length < 6) return toast('Kodu eksiksiz yaz.', 'bad'); if (!pwOk(pw, $('aPw2').value)) return;
             run(b2, 'Şifreyi değiştir', sb.auth.verifyOtp({ email: em, token: c, type: 'recovery' }).then(function (r) { if (r.error) throw r.error; return sb.auth.updateUser({ password: pw }); }))
@@ -1327,8 +1343,17 @@
   birdImage(personal().bird);
   render();
   if (SERVER) {
-    var fromLink = /[?&]code=/.test(location.search);
+    var fromLink = /[?&]code=/.test(location.search) || !!AUTH_HASH;
     if (fromLink || (!st.profile)) server(true).then(function (u) {
+      if (AUTH_HASH) {
+        history.replaceState(null, '', location.pathname + '#/');
+        if (/error/.test(AUTH_HASH) && !u) { toast('Bu linkin süresi dolmuş ya da daha önce kullanılmış. Yeniden iste.', 'bad', 6000); return; }
+        if (u && u.email) { st.email = u.email; save(); }
+        if (AUTH_TYPE === 'recovery') setTimeout(function () { authModal('password'); }, 300);
+        else if ((AUTH_TYPE === 'email_change' || AUTH_TYPE === 'signup') && st.needPw) setTimeout(function () { authModal('password'); }, 300);
+        else if (u && u.email) toast('E-postan doğrulandı.', 'good');
+        render();
+      }
       if (!u) return;
       if (/[?&]code=/.test(location.search)) history.replaceState(null, '', location.pathname + location.hash);
       return (st.profile ? Promise.resolve(false) : restore()).then(function (ok) { if (ok) { toast('Tekrar hoş geldin, ' + st.profile.nickname + '.', 'good'); render(); } });

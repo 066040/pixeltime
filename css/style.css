@@ -467,3 +467,6 @@ input[type=password],input[type=tel]{width:100%;min-height:46px;padding:10px 12p
 .devs li{display:flex;flex-direction:column;padding:10px 0;border-bottom:1px solid var(--rule);font-size:14px}
 .devs b{font:500 14px var(--mono)}
 .devs span{color:var(--muted);font-size:13px}
+.auth .codebox{border-top:1px solid var(--rule);padding-top:10px}
+.auth .codebox summary{cursor:pointer;font-size:14px;color:var(--muted);min-height:40px;display:flex;align-items:center}
+.auth .codebox[open]{display:flex;flex-direction:column;gap:14px}
