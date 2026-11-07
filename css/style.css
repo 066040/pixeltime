@@ -470,3 +470,6 @@ input[type=password],input[type=tel]{width:100%;min-height:46px;padding:10px 12p
 .auth .codebox{border-top:1px solid var(--rule);padding-top:10px}
 .auth .codebox summary{cursor:pointer;font-size:14px;color:var(--muted);min-height:40px;display:flex;align-items:center}
 .auth .codebox[open]{display:flex;flex-direction:column;gap:14px}
+.auth .waiting{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:14px;color:var(--accent-d);font-weight:500}
+.auth .waiting:before{content:"";width:14px;height:14px;border-radius:50%;border:2px solid var(--accent-l);border-top-color:var(--accent);animation:dn 1s linear infinite}
+@keyframes dn{to{transform:rotate(360deg)}}

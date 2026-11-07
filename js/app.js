@@ -568,7 +568,7 @@
     $('view').innerHTML =
       head('Sezon ' + SEASON + ' · Portre No. ' + st.canvasNo, '<span id="greet">' + esc(greet()) + '</span>') +
       (SERVER && !TEST && !st.email ? '<p class="nudge"><span>Kayıtların şu an sadece bu cihazda. Hesabını kaydet, telefonun değişse de kaybolmasın.</span><button type="button" class="btn small primary" id="bSaveAcc">Hesabını kaydet</button></p>' : '') +
-      (SERVER && st.email && st.needPw ? '<p class="nudge"><span>E-postan doğrulandı. Son adım: şifreni belirle.</span><button type="button" class="btn small primary" id="bSetPw">Şifre belirle</button></p>' : '') +
+      (SERVER && st.email && st.needPw ? '<p class="nudge"><span>E-postan doğrulandı. Kaydı başlattığın ekranda tamamlanmadıysa şifreni buradan belirle.</span><button type="button" class="btn small primary" id="bSetPw">Şifre belirle</button></p>' : '') +
       '<div class="work">' +
       '<section class="plate" aria-label="Portre">' +
       '<div class="mat"><canvas id="pcanvas" class="pt" role="img" aria-label="Portre tuvali"></canvas></div>' +
@@ -976,13 +976,22 @@
     /* Mailde link varsa linke tıklanır; kod varsa kod yazılır. linkDone: linke tıklandıktan sonra burada devam etmek için. */
     function codeStep(title, lead, verify, resend, linkDone) {
       shell(title, '<p class="muted small">' + lead + '</p>' +
-        (linkDone ? '<p class="small">Maildeki <b>linke tıkla</b>. Link başka bir uygulamada ya da sekmede açılabilir, sorun değil. Sonra buraya dönüp aşağıdaki butona bas.</p><button type="button" class="btn primary" id="aLink">Linke tıkladım, devam et</button>' +
+        (linkDone ? '<button type="button" class="btn ghost" id="aLink">Linke tıkladım, kontrol et</button>' +
           '<details class="codebox"><summary>Mailde 6 haneli kod mu var?</summary>' + codeField() + '<button type="button" class="btn ghost" id="aGo">Kodu doğrula</button></details>'
           : codeField() + '<button type="button" class="btn primary" id="aGo">Doğrula</button>'),
         '<a href="#" id="aResend">Tekrar gönder</a>');
-      if (linkDone) $('aLink').addEventListener('click', function () { run(this, 'Linke tıkladım, devam et', linkDone()).catch(function () {}); });
+      if (linkDone) $('aLink').addEventListener('click', function () { run(this, 'Linke tıkladım, kontrol et', linkDone()).catch(function () {}); });
       bind('aGo', function (b) { var c = code(); if (c.length < 6) return toast('Kodu eksiksiz yaz.', 'bad'); run(b, 'Doğrula', verify(c)).catch(function () {}); });
       $('aResend').addEventListener('click', function (e) { e.preventDefault(); resend().then(function (r) { if (r && r.error) throw r.error; toast('Tekrar gönderildi.', 'good'); }).catch(function (er) { toast(authErr(er), 'bad'); }); });
+    }
+    /* E-posta doğrulandı: şifre daha önce (başka sekmede) belirlendiyse tekrar sorma */
+    function afterVerify() {
+      return sb.auth.getUser().then(function (r) {
+        var u = r.data && r.data.user; user = u || user;
+        st.email = u && u.email || st.email; save();
+        if (u && u.user_metadata && u.user_metadata.pw_set) return signedIn('Hesabın kaydedildi. Artık her cihazdan girebilirsin.');
+        authModal('password');
+      });
     }
     function signedIn(msg) {
       return sb.auth.getUser().then(function (r) {
@@ -993,23 +1002,38 @@
     }
 
     if (kind === 'register') {
+      /* E-posta + şifre en başta alınır. Supabase şifreyi ancak e-posta doğrulanınca kabul ettiği için:
+         mail gider → kullanıcı linke tıklar (hangi sekme/cihaz olursa olsun) → bu pencere doğrulamayı kendisi fark eder,
+         şifreyi kaydeder ve biter. Şifre ikinci kez sorulmaz. */
       shell(AUTH_TITLES.register, '<p class="muted small">Kareler, portreler ve saatlerin bu hesaba bağlanır. Telefonun değişse bile e-posta ve şifrenle her cihazdan girersin.</p>' +
         emailField() + pwFields('Şifre', true) + '<button type="button" class="btn primary" id="aGo">Doğrulama maili gönder</button>',
         'Zaten hesabın var mı? <a href="#" data-go="login">Giriş yap</a>');
       bind('aGo', function (b) {
         var em = readEmail(); if (!em) return; var pw = $('aPw').value; if (!pwOk(pw, $('aPw2').value)) return;
         email = em; st.needPw = true; save();
+        var finish = function () {
+          return sb.auth.updateUser({ password: pw, data: { pw_set: true } }).then(function (r) { if (r.error) throw r.error; st.needPw = false; save(); return signedIn('Hesabın kaydedildi. Artık her cihazdan e-posta ve şifrenle girebilirsin.'); });
+        };
         run(b, 'Doğrulama maili gönder', server().then(function () { return sb.auth.updateUser({ email: em }, { emailRedirectTo: location.origin + location.pathname }); })).then(function () {
-          codeStep('E-postanı doğrula', '<b>' + esc(em) + '</b> adresine bir doğrulama maili gönderdik. Gelmediyse spam/gereksiz klasörüne bak.',
-            function (c) { return sb.auth.verifyOtp({ email: em, token: c, type: 'email_change' }).then(function (r) { if (r.error) throw r.error; return sb.auth.updateUser({ password: pw }); }).then(function (r) { if (r.error) throw r.error; return signedIn('Hesabın kaydedildi. Artık her cihazdan girebilirsin.'); }); },
-            function () { return sb.auth.updateUser({ email: em }); },
-            function () {
-              return sb.auth.getUser().then(function (r) {
-                var u = r.data && r.data.user;
-                if (!u || u.email !== em) throw new Error('henuz dogrulanmadi');
-                return sb.auth.updateUser({ password: pw });
-              }).then(function (r) { if (r.error) throw r.error; return signedIn('Hesabın kaydedildi. Artık her cihazdan girebilirsin.'); });
+          var poll = null, busyPoll = false;
+          var check = function () {
+            return sb.auth.getUser().then(function (r) {
+              var u = r.data && r.data.user;
+              if (!u || u.email !== em) throw new Error('henuz dogrulanmadi');
+              if (poll) { clearInterval(poll); poll = null; }
+              return finish();
             });
+          };
+          codeStep('Mailine bak', '<b>' + esc(em) + '</b> adresine bir doğrulama linki gönderdik. Linke tıkladığında bu ekran kendiliğinden tamamlanır, buraya dönmen yeterli.<span class="waiting" aria-live="polite">Doğrulama bekleniyor</span>',
+            function (c) { return sb.auth.verifyOtp({ email: em, token: c, type: 'email_change' }).then(function (r) { if (r.error) throw r.error; if (poll) { clearInterval(poll); poll = null; } return finish(); }); },
+            function () { return sb.auth.updateUser({ email: em }); },
+            check);
+          /* Her 4 saniyede bir: linke tıklandı mı? Pencere kapanınca durur. */
+          poll = setInterval(function () {
+            if (!$('aLink')) { clearInterval(poll); poll = null; return; }
+            if (busyPoll) return; busyPoll = true;
+            check().catch(function () {}).then(function () { busyPoll = false; });
+          }, 4000);
         }).catch(function () {});
       });
     } else if (kind === 'login') {
@@ -1050,10 +1074,13 @@
         }).catch(function () {});
       });
     } else if (kind === 'password') {
-      shell(AUTH_TITLES.password, '<p class="muted small">' + (st.email ? esc(st.email) + ' hesabı için yeni şifre.' : '') + '</p>' + pwFields('Yeni şifre', true) + '<button type="button" class="btn primary" id="aGo">Kaydet</button>');
+      shell(st.needPw ? 'Son adım: şifreni belirle' : AUTH_TITLES.password, '<p class="muted small">' + (st.needPw ? 'E-postan doğrulandı' + (st.email ? ' (' + esc(st.email) + ')' : '') + '. Başka cihazdan girerken bu şifreyi kullanacaksın.' : (st.email ? esc(st.email) + ' hesabı için yeni şifre.' : '')) + '</p>' + pwFields(st.needPw ? 'Şifre' : 'Yeni şifre', true) + '<button type="button" class="btn primary" id="aGo">Kaydet</button>');
       bind('aGo', function (b) {
         var pw = $('aPw').value; if (!pwOk(pw, $('aPw2').value)) return;
-        run(b, 'Kaydet', server().then(function () { return sb.auth.updateUser({ password: pw }); })).then(function () { st.needPw = false; save(); close(); toast('Şifren kaydedildi.', 'good'); render(); }).catch(function () {});
+        var firstTime = st.needPw;
+        run(b, 'Kaydet', server().then(function () { return sb.auth.updateUser({ password: pw, data: { pw_set: true } }); })).then(function () {
+          st.needPw = false; save(); close(); toast(firstTime ? 'Hesabın kaydedildi. Artık her cihazdan girebilirsin.' : 'Şifren kaydedildi.', 'good', 5000); render(); sync();
+        }).catch(function () {});
       });
     }
   }
@@ -1063,7 +1090,6 @@
     sb.auth.onAuthStateChange(function (ev, session) {
       if (session && session.user) { user = session.user; if (user.email && st.email !== user.email) { st.email = user.email; save(); } }
       if (ev === 'PASSWORD_RECOVERY') setTimeout(function () { authModal('password'); }, 300);
-      else if (ev === 'USER_UPDATED' && st.needPw && user && user.email && !user.new_email) setTimeout(function () { if ($('modal').hidden) authModal('password'); }, 300);
     });
   }
 
@@ -1350,7 +1376,7 @@
         if (/error/.test(AUTH_HASH) && !u) { toast('Bu linkin süresi dolmuş ya da daha önce kullanılmış. Yeniden iste.', 'bad', 6000); return; }
         if (u && u.email) { st.email = u.email; save(); }
         if (AUTH_TYPE === 'recovery') setTimeout(function () { authModal('password'); }, 300);
-        else if ((AUTH_TYPE === 'email_change' || AUTH_TYPE === 'signup') && st.needPw) setTimeout(function () { authModal('password'); }, 300);
+        else if (AUTH_TYPE === 'email_change' || AUTH_TYPE === 'signup') toast('E-postan doğrulandı. Kaydı başlattığın ekrana dönebilirsin, orada kendiliğinden tamamlanır.', 'good', 8000);
         else if (u && u.email) toast('E-postan doğrulandı.', 'good');
         render();
       }
