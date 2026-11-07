@@ -178,11 +178,24 @@
   }
   var pulse = 0, pulseIdx = -1;
   /* side: kenar kare sayısı · opened: açılan kare · seed: açılış sırası · owners: kare sahibi renkleri */
+  /* Açılış sırası: ortadan dışa doğru, biraz rastgele. İlk kareler çimen değil kuşun kendisi olsun. */
+  var orderCache = {};
+  function revealOrder(n, seed) {
+    var key = n + ':' + seed; if (orderCache[key]) return orderCache[key];
+    var side = Math.round(Math.sqrt(n)), x = hashStr('sira:' + seed) || 1, c = (side - 1) / 2, dmax = Math.sqrt(2) * c || 1, cells = [];
+    function r() { x = (x + 0x6D2B79F5) | 0; var t = Math.imul(x ^ (x >>> 15), 1 | x); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }
+    for (var p = 0; p < n; p++) {
+      var dx = (p % side) - c, dy = Math.floor(p / side) - c * 0.9;   /* kafalar genelde biraz yukarıda */
+      cells.push({ p: p, k: Math.sqrt(dx * dx + dy * dy) / dmax * 0.62 + r() * 0.38 });
+    }
+    cells.sort(function (a, b) { return a.k - b.k; });
+    return (orderCache[key] = cells.map(function (o) { return o.p; }));
+  }
   function drawCanvas(cv, side, opened, seed, birdId, owners, highlight) {
     if (!cv) return;
     var cell = Math.max(8, Math.floor(800 / side)), px = cell * side;
     if (cv.width !== px) { cv.width = cv.height = px; }
-    var g = cv.getContext('2d'), img = fullImage(px, birdId), order = shuffled(side * side, seed);
+    var g = cv.getContext('2d'), img = fullImage(px, birdId), order = revealOrder(side * side, seed);
     var gap = side > 24 ? 1 : side > 8 ? 2 : 4;
     g.fillStyle = '#e3e8dc'; g.fillRect(0, 0, px, px);
     var shown = {};
@@ -1193,9 +1206,16 @@
   }
   function seasonCard() {
     var p = st.profile; if (!p) return;
-    var s = stats(), P = personal(), src = document.createElement('canvas');
-    drawCanvas(src, N, P.opened, P.seed, P.bird);
-    Promise.all([loadImg('img/pixel-logo-kucuk.svg'), photoUrls(p.bird, 500).then(function (l) { return loadFirst(l, true); })]).then(function (r) {
+    var s = stats(), P = personal(), done = finishedCanvases();
+    var items = collectionItems(st.seed, done);
+    /* En fazla 9 kare: tamamlananların son 8'i (ya da 9'u) + sürüyorsa gizli portre */
+    var showOpen = !P.full && P.opened > 0, slots = 9 - (showOpen ? 1 : 0);
+    var extra = Math.max(0, items.length - slots);
+    var tiles = items.slice(-slots);
+    var src = null;
+    if (!done) { src = document.createElement('canvas'); drawCanvas(src, N, P.opened, P.seed, P.bird); }
+    var pics = tiles.map(function (it) { return photoUrls(it.bird, 330).then(function (l) { return loadFirst(l, true); }); });
+    Promise.all([loadImg('img/pixel-logo-kucuk.svg'), photoUrls(p.bird, 500).then(function (l) { return loadFirst(l, true); })].concat(pics)).then(function (r) {
       var logo = r[0], pic = r[1], W = 1080, H = 1920, k = baseCard(W, H, logo), g = k.g;
       g.fillStyle = '#56655b'; g.font = '400 32px ' + FU; g.textAlign = 'right'; g.fillText('Sezon ' + SEASON + ' kartı', W - 90, 160); g.textAlign = 'left';
       var cx = 190, cy = 360, R = 100;
@@ -1207,15 +1227,50 @@
       g.fillStyle = '#17231b'; g.font = '600 76px ' + FS; g.fillText(p.nickname, 330, 360);
       g.fillStyle = '#56655b'; g.font = '400 32px ' + FU; g.fillText([p.exam, p.city, p.school].filter(Boolean).join(' · ') || birdName(p.bird), 330, 412);
       var rows = [[s.total, 'kare'], [s.hours, 'saat odak'], [s.streak, 'gün üst üste'], [s.birds, 'portre']];
-      g.strokeStyle = '#d9d1c1'; g.lineWidth = 2;
+      g.strokeStyle = '#cbd4c4'; g.lineWidth = 2;
       rows.forEach(function (row, i) {
-        var x = 90 + (i % 2) * 460, y = 520 + Math.floor(i / 2) * 210;
+        var x = 90 + (i % 2) * 460, y = 500 + Math.floor(i / 2) * 175;
         g.beginPath(); g.moveTo(x, y); g.lineTo(x + 420, y); g.stroke();
-        g.fillStyle = '#17231b'; g.font = '500 96px ' + FM; g.fillText(String(row[0]), x, y + 110);
-        g.fillStyle = '#56655b'; g.font = '400 32px ' + FU; g.fillText(row[1], x, y + 160);
+        g.fillStyle = '#17231b'; g.font = '500 80px ' + FM; g.fillText(String(row[0]), x, y + 92);
+        g.fillStyle = '#56655b'; g.font = '400 30px ' + FU; g.fillText(row[1], x, y + 136);
       });
-      g.fillStyle = '#ffffff'; g.fillRect(140, 960, 800, 800); g.strokeStyle = '#17231b'; g.strokeRect(140, 960, 800, 800);
-      g.drawImage(src, 170, 990, 740, 740);
+
+      var top = 900;
+      if (!done) {
+        /* Henüz biten portre yok: ilk portre, ne kadar açıldığıyla */
+        g.fillStyle = '#17231b'; g.font = '700 40px ' + FS; g.fillText('İlk portrem yolda', 140, top + 10);
+        g.fillStyle = '#ffffff'; g.fillRect(215, top + 50, 650, 650); g.strokeStyle = '#183522'; g.lineWidth = 2; g.strokeRect(215, top + 50, 650, 650);
+        g.drawImage(src, 240, top + 75, 600, 600);
+        g.fillStyle = '#56655b'; g.font = '400 32px ' + FU; g.textAlign = 'center';
+        g.fillText('Gizli tür · ' + P.opened + ' / ' + CELLS + ' kare açıldı', W / 2, top + 760); g.textAlign = 'left';
+      } else {
+        g.fillStyle = '#17231b'; g.font = '700 40px ' + FS; g.fillText('Koleksiyonum', 140, top + 10);
+        var n = tiles.length + (showOpen ? 1 : 0), cols = n <= 1 ? 1 : n <= 4 ? 2 : 3, rowsN = Math.ceil(n / cols), gapx = 28, capH = 58;
+        var y0 = top + 56, avail = H - 150 - y0;   /* alttaki etiket satırına kadar */
+        var size = Math.floor(Math.min(cols === 1 ? 520 : (W - 240 - (cols - 1) * gapx) / cols, (avail - rowsN * (capH + 14)) / rowsN));
+        var gridW = cols * size + (cols - 1) * gapx, x0 = (W - gridW) / 2;
+        var cellAt = function (i) { return { x: x0 + (i % cols) * (size + gapx), y: y0 + Math.floor(i / cols) * (size + capH + 14) }; };
+        tiles.forEach(function (it, i) {
+          var c = cellAt(i), b = bird(it.bird), im = r[2 + i];
+          g.fillStyle = '#ffffff'; g.fillRect(c.x - 8, c.y - 8, size + 16, size + 16); g.strokeStyle = '#183522'; g.lineWidth = 2; g.strokeRect(c.x - 8, c.y - 8, size + 16, size + 16);
+          g.fillStyle = '#d3dbcc'; g.fillRect(c.x, c.y, size, size);
+          if (im) { var sd = Math.min(im.width, im.height); g.drawImage(im, (im.width - sd) * b.fx, (im.height - sd) * b.fy, sd, sd, c.x, c.y, size, size); }
+          g.fillStyle = '#17231b'; g.font = '600 ' + (size < 260 ? 25 : 30) + 'px ' + FU; g.textAlign = 'center';
+          g.fillText(b.name, c.x + size / 2, c.y + size + 44, size + 10); g.textAlign = 'left';
+        });
+        if (extra) {
+          var c0 = cellAt(0); g.fillStyle = '#f4c521'; g.beginPath(); g.arc(c0.x + 4, c0.y + 4, 44, 0, 7); g.fill();
+          g.fillStyle = '#17231b'; g.font = '700 30px ' + FU; g.textAlign = 'center'; g.fillText('+' + extra, c0.x + 4, c0.y + 15); g.textAlign = 'left';
+        }
+        if (showOpen) {
+          var c = cellAt(tiles.length);
+          g.fillStyle = '#183522'; g.fillRect(c.x - 8, c.y - 8, size + 16, size + 16);
+          g.strokeStyle = '#f4c521'; g.lineWidth = 3; g.setLineDash([12, 10]); g.strokeRect(c.x + 6, c.y + 6, size - 12, size - 12); g.setLineDash([]);
+          g.fillStyle = '#f4c521'; g.font = '700 ' + Math.round(size * 0.42) + 'px ' + FS; g.textAlign = 'center'; g.fillText('?', c.x + size / 2, c.y + size * 0.6);
+          g.fillStyle = '#ffffff'; g.font = '500 ' + (size < 260 ? 24 : 30) + 'px ' + FM; g.fillText(P.opened + ' / ' + CELLS, c.x + size / 2, c.y + size * 0.85);
+          g.fillStyle = '#17231b'; g.font = '600 ' + (size < 260 ? 25 : 30) + 'px ' + FU; g.fillText('Sıradaki', c.x + size / 2, c.y + size + 44); g.textAlign = 'left';
+        }
+      }
       g.fillStyle = '#2b7a3a'; g.font = '500 34px ' + FM; g.fillText(TAG, 90, H - 80);
       g.textAlign = 'right'; g.fillStyle = '#56655b'; g.font = '400 30px ' + FU; g.fillText(location.host + location.pathname.replace(/index\.html$/, ''), W - 90, H - 80);
       showImage(k.c, 'Sezon kartın', 'pixeltime-sezon-karti.png', 'PixelTime sezon kartım. ' + TAG);
