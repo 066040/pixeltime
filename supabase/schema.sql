@@ -392,6 +392,14 @@ begin
   return jsonb_build_object('accepted', to_jsonb(ok), 'rejected', bad);
 end $$;
 
+-- Tablo yetkileri (yeni Supabase projeleri tabloları otomatik açmıyor; hangi rolün neye erişeceği burada).
+-- Satır düzeyinde kimin neyi göreceğini yukarıdaki RLS kuralları belirler.
+grant usage on schema public to anon, authenticated;
+grant select, insert, update on public.profiles to authenticated;
+grant select on public.teams to authenticated;
+grant select on public.blocks to authenticated;
+revoke all on public.devices from anon, authenticated;
+
 -- Fonksiyon yetkileri
 revoke all on function public.add_block(uuid, text, timestamptz, timestamptz, text, uuid) from public, anon, authenticated;
 revoke all on function public.record_blocks(jsonb) from public;
