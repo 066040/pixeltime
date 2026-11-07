@@ -70,7 +70,7 @@
   function bird(id) { return BIRDS.get(id) || BIRDS.get('muhabbet'); }
   function birdName(id) { return bird(id).name; }
   function catName(c) { for (var i = 0; i < BIRDS.cats.length; i++) if (BIRDS.cats[i][0] === c) return BIRDS.cats[i][1]; return ''; }
-  function ring(c1, c2) { return '--r1:' + esc(c1 || '#3f5f9e') + ';--r2:' + esc(c2 || c1 || '#3f5f9e'); }
+  function ring(c1, c2) { return '--r1:' + esc(c1 || '#2b7a3a') + ';--r2:' + esc(c2 || c1 || '#2b7a3a'); }
   /* Profil kuşu: gerçek fotoğraf, kenarlık tek renk ya da gradyan */
   function av(id, c1, c2, size) {
     var b = bird(id);
@@ -128,6 +128,8 @@
   function loadPh(el, id) {
     photoUrls(id, 330).then(function (l) { return loadFirst(l, false); }).then(function (im) {
       if (!im) return;
+      var b = BIRDS.get(id);
+      if (b) im.style.objectPosition = (b.fx * 100) + '% ' + (b.fy * 100) + '%';
       im.alt = ''; el.innerHTML = ''; el.appendChild(im); el.classList.add('ok');
     });
   }
@@ -170,7 +172,8 @@
     var im = birdImage(id); if (!im) return null;
     var c = document.createElement('canvas'); c.width = c.height = px;
     var iw = im.naturalWidth || im.width, ih = im.naturalHeight || im.height, side = Math.min(iw, ih);
-    c.getContext('2d').drawImage(im, (iw - side) / 2, (ih - side) * 0.4, side, side, 0, 0, px, px);
+    var b = BIRDS.get(id) || {}, fx = b.fx == null ? 0.5 : b.fx, fy = b.fy == null ? 0.35 : b.fy;
+    c.getContext('2d').drawImage(im, (iw - side) * fx, (ih - side) * fy, side, side, 0, 0, px, px);
     return (fullCache[key] = c);
   }
   var pulse = 0, pulseIdx = -1;
@@ -181,18 +184,18 @@
     if (cv.width !== px) { cv.width = cv.height = px; }
     var g = cv.getContext('2d'), img = fullImage(px, birdId), order = shuffled(side * side, seed);
     var gap = side > 24 ? 1 : side > 8 ? 2 : 4;
-    g.fillStyle = '#ece6da'; g.fillRect(0, 0, px, px);
+    g.fillStyle = '#e3e8dc'; g.fillRect(0, 0, px, px);
     var shown = {};
     for (var i = 0; i < Math.min(opened, order.length); i++) shown[order[i]] = i + 1;
     for (var p = 0; p < side * side; p++) {
       var x = (p % side) * cell, y = Math.floor(p / side) * cell;
       if (shown[p]) {
         if (img) g.drawImage(img, x, y, cell, cell, x, y, cell, cell);
-        else { g.fillStyle = '#c9c1b1'; g.fillRect(x, y, cell, cell); }
+        else { g.fillStyle = '#bcc7b6'; g.fillRect(x, y, cell, cell); }
         var col = owners && owners[shown[p] - 1];
         if (col && cell >= 10) { g.strokeStyle = col; g.lineWidth = Math.max(1, cell / 12); g.strokeRect(x + g.lineWidth / 2, y + g.lineWidth / 2, cell - g.lineWidth, cell - g.lineWidth); }
       } else {
-        g.fillStyle = '#ddd5c6'; g.fillRect(x + gap / 2, y + gap / 2, cell - gap, cell - gap);
+        g.fillStyle = '#d3dbcc'; g.fillRect(x + gap / 2, y + gap / 2, cell - gap, cell - gap);
       }
     }
     if (highlight != null && highlight >= 0 && highlight < order.length && pulse > 0) {
@@ -220,9 +223,32 @@
   }
 
   /* ================= Ekranı açık tut ================= */
-  var lock = null;
-  function wake() { if ('wakeLock' in navigator) navigator.wakeLock.request('screen').then(function (l) { lock = l; }).catch(function () {}); }
-  function unwake() { if (lock) { lock.release().catch(function () {}); lock = null; } }
+  /* 1) Wake Lock API (Chrome, Safari 16.4+).
+     2) Olmazsa ya da reddedilirse: sessiz, döngüdeki 1 karelik görüntü (eski iPad/iPhone ve ana ekran uygulaması için).
+     Oturum sürerken ekran kendiliğinden kararırsa "uygulamadan çıkıldı" sayılmasın diye. */
+  var lock = null, wanted = false, vid = null;
+  function vidOn() {
+    if (!vid) {
+      vid = document.createElement('video');
+      vid.setAttribute('playsinline', ''); vid.setAttribute('muted', ''); vid.muted = true; vid.loop = true;
+      vid.setAttribute('aria-hidden', 'true'); vid.src = 'media/uyanik.mp4';
+      vid.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:0;bottom:0';
+      document.body.appendChild(vid);
+    }
+    var p = vid.play(); if (p && p.catch) p.catch(function () {});
+  }
+  function wake() {
+    wanted = true;
+    if (lock) return;
+    if ('wakeLock' in navigator) {
+      navigator.wakeLock.request('screen').then(function (l) {
+        lock = l;
+        l.addEventListener('release', function () { lock = null; if (wanted && !document.hidden) wake(); });
+        if (vid) vid.pause();
+      }).catch(vidOn);
+    } else vidOn();
+  }
+  function unwake() { wanted = false; if (lock) { lock.release().catch(function () {}); lock = null; } if (vid) vid.pause(); }
 
   /* ================= Zamanlayıcı ================= */
   function canWork() {
@@ -348,6 +374,7 @@
     if (sb) return Promise.resolve(sb);
     return (window.supabase ? Promise.resolve() : loadScript(SUPA_JS)).then(function () {
       sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' } });
+      watchAuth();
       return sb;
     });
   }
@@ -388,6 +415,34 @@
       });
     });
   }
+  /* Saatten (ya da başka cihazdan) gelen yeni kareleri çek: siteye 1 hafta sonra girsen de hepsi burada */
+  function pullBlocks() {
+    if (!user) return Promise.resolve();
+    var since = st.pulledAt || '1970-01-01T00:00:00Z';
+    return sb.from('blocks').select('client_id,started_at,ended_at,mode,created_at').gt('created_at', since).order('created_at').limit(1000).then(chk).then(function (rows) {
+      if (!rows || !rows.length) return;
+      var have = {}, added = 0, fromClock = 0;
+      st.blocks.forEach(function (b) { have[b.client_id] = 1; });
+      rows.forEach(function (r) {
+        if (!have[r.client_id]) { st.blocks.push({ client_id: r.client_id, started_at: r.started_at, ended_at: r.ended_at, mode: r.mode, synced: true }); added++; if (r.mode === 'saat') fromClock++; }
+      });
+      st.pulledAt = rows[rows.length - 1].created_at;
+      if (added) {
+        st.blocks.sort(function (a, b) { return a.started_at < b.started_at ? -1 : 1; });
+        save(); render();
+        if (fromClock) toast('Saatinden ' + fromClock + ' kare geldi.', 'good', 5000);
+      } else save();
+    });
+  }
+  /* Bu hesaba bağlı PixelTime Saat'ler. Saati olan Pixel'i açar. */
+  function refreshDevices() {
+    if (!user) return Promise.resolve();
+    return sb.rpc('my_devices').then(chk).then(function (list) {
+      st.devices = list || [];
+      if (st.devices.length && !st.pro) { st.pro = true; toast('PixelTime Saat bağlı. Pixel açıldı.', 'good'); render(); }
+      save();
+    });
+  }
   function sync() {
     renderSync();
     if (!SERVER || syncing || !navigator.onLine || !st.profile) return Promise.resolve();
@@ -403,7 +458,7 @@
           st.blocks.forEach(function (b) { if (acc[b.client_id]) b.synced = true; if (rej[b.client_id]) { b.synced = true; b.rejected = rej[b.client_id]; } });
           save();
         });
-    }).then(function () { return refreshTeam(); })
+    }).then(pullBlocks).then(refreshDevices).then(function () { return refreshTeam(); })
       .catch(function (e) { console.warn('senkron', e); })
       .then(function () { syncing = false; renderSync(); });
   }
@@ -496,6 +551,8 @@
     var P = personal();
     $('view').innerHTML =
       head('Sezon ' + SEASON + ' · Portre No. ' + st.canvasNo, '<span id="greet">' + esc(greet()) + '</span>') +
+      (SERVER && !TEST && !st.email ? '<p class="nudge"><span>Kayıtların şu an sadece bu cihazda. Hesabını kaydet, telefonun değişse de kaybolmasın.</span><button type="button" class="btn small primary" id="bSaveAcc">Hesabını kaydet</button></p>' : '') +
+      (SERVER && st.email && st.needPw ? '<p class="nudge"><span>E-postan doğrulandı. Son adım: şifreni belirle.</span><button type="button" class="btn small primary" id="bSetPw">Şifre belirle</button></p>' : '') +
       '<div class="work">' +
       '<section class="plate" aria-label="Portre">' +
       '<div class="mat"><canvas id="pcanvas" class="pt" role="img" aria-label="Portre tuvali"></canvas></div>' +
@@ -516,6 +573,8 @@
     Array.prototype.forEach.call($('seg').children, function (b) {
       b.addEventListener('click', function () { if (st.active) return; st.mode = b.getAttribute('data-m'); save(); renderTimer(); });
     });
+    if ($('bSaveAcc')) $('bSaveAcc').addEventListener('click', function () { authModal('register'); });
+    if ($('bSetPw')) $('bSetPw').addEventListener('click', function () { authModal('password'); });
     $('bStart').addEventListener('click', startWork);
     $('bBreak').addEventListener('click', startBreak);
     $('bStop').addEventListener('click', giveUp);
@@ -690,9 +749,9 @@
   }
 
   /* ---------- Profil ---------- */
-  var PRESETS = [['#3f5f9e', null], ['#17191c', null], ['#b5462f', null], ['#2f6b4f', null], ['#3f5f9e', '#9b6bd6'], ['#e0a03a', '#b5462f'], ['#2f8f9e', '#2f6b4f'], ['#17191c', '#8a8478']];
+  var PRESETS = [['#2b7a3a', null], ['#f4c521', null], ['#3a62d0', null], ['#17231b', null], ['#b5462f', null], ['#2f6b4f', null], ['#3f5f9e', '#9b6bd6'], ['#e0a03a', '#b5462f'], ['#2f8f9e', '#2f6b4f'], ['#17231b', '#8a8478'], ['#f4c521', '#2b7a3a'], ['#3a62d0', '#9b6bd6']];
   function renderProfile() {
-    var p = st.profile || { nickname: '', bird: 'muhabbet', color: '#3f5f9e', color2: null, exam: '', city: '', school: '' };
+    var p = st.profile || { nickname: '', bird: 'muhabbet', color: '#2b7a3a', color2: null, exam: '', city: '', school: '' };
     var first = !st.profile, draft = { bird: p.bird, color: p.color, color2: p.color2 || null };
     var pickable = BIRDS.list.slice(); if (st.pro) pickable.unshift(BIRDS.pixel);
     var form =
@@ -718,7 +777,7 @@
       (first ? '<div class="field"><label for="fGoal">Günlük hedef</label><select id="fGoal">' + goalOptions() + '</select></div>' : '<div></div>') + '</div>' +
       (first ? '' : '<p class="savestate" id="fState" role="status"></p>') +
       '<button type="button" class="btn primary" id="fSave">' + (first ? 'Hesabı oluştur' : 'Değişiklikleri kaydet') + '</button>' +
-      (first && SERVER ? '<p class="hint center">Başka bir cihazda hesabın var mı? <a href="#" id="fLogin">E-postanla giriş yap</a></p>' : '') +
+      (first && SERVER ? '<p class="hint center">Zaten hesabın var mı? <a href="#" id="fLogin">Giriş yap</a></p>' : '') +
       '</section>';
     $('view').innerHTML = first
       ? '<div class="onboard"><div class="obtext">' + head('Sezon ' + SEASON + ' · Kayıt', 'Çalıştıkça bir portre ortaya çıkar.', 'Kesintisiz geçen her 25 dakika, gizli bir kuş portresinin bir karesini açar. Telefonu bıraktığın süre görünür olur; ekibinle, okulunla, şehrinle birlikte.') +
@@ -777,7 +836,7 @@
       if (first) { go(st.pendingJoin && SERVER ? '#/ekip' : '#/'); if (!st.pixelSeen) pixelWelcome(); }
       else { toast('Profilin kaydedildi.', 'good'); render(); }
     });
-    if ($('fLogin')) $('fLogin').addEventListener('click', function (e) { e.preventDefault(); emailModal('login'); });
+    if ($('fLogin')) $('fLogin').addEventListener('click', function (e) { e.preventDefault(); authModal('login'); });
     if ($('bCard')) $('bCard').addEventListener('click', seasonCard);
     if ($('bPro')) $('bPro').addEventListener('click', proModal);
     if ($('bPixelCanvas')) $('bPixelCanvas').addEventListener('change', function () { st.pixelCanvas = this.checked; save(); toast(this.checked ? 'Çalış sayfasında artık Pixel\'in portresi açılıyor.' : 'Sıradaki kuş portresine dönüldü.', 'good'); });
@@ -800,15 +859,25 @@
   function goalOptions() { return GOALS.map(function (g) { return '<option value="' + g + '"' + (g === st.goal ? ' selected' : '') + '>' + g + ' kare · yaklaşık ' + hours(g) + ' saat</option>'; }).join(''); }
   function proBlock() {
     if (st.pro) return '<section class="card pro"><p class="label">PixelTime Saat</p><h2>Pixel senin.</h2><p class="muted">Pixel\'i profil kuşu olarak seçebilir, portresi üzerinde çalışabilirsin.</p>' +
-      '<label class="check"><input type="checkbox" id="bPixelCanvas"' + (st.pixelCanvas ? ' checked' : '') + '> Pixel\'in portresi üzerinde çalış</label></section>';
+      deviceList() +
+      '<label class="check"><input type="checkbox" id="bPixelCanvas"' + (st.pixelCanvas ? ' checked' : '') + '> Pixel\'in portresi üzerinde çalış</label>' +
+      (SERVER ? '<button type="button" class="btn quiet" id="bPro">Başka bir saat bağla</button>' : '') + '</section>';
     return '<section class="card pro"><div class="pro-mark"><img src="img/pixel-logo-kucuk.svg" alt="" width="56" height="56"><span class="lockic">' + ICON.lock + '</span></div>' +
       '<p class="label">PixelTime Saat ile</p><h2>Pixel\'in portresi</h2><p class="muted">Pixel\'in portresi üzerinde çalışmak ve Pixel\'i profil kuşu yapmak, PixelTime Saat sahiplerine özeldir.</p>' +
-      '<button type="button" class="btn ghost" id="bPro">Saat kodunu gir</button></section>';
+      '<button type="button" class="btn ghost" id="bPro">Saatini bağla</button></section>';
+  }
+  function deviceList() {
+    var l = st.devices || []; if (!l.length) return '';
+    return '<ul class="devs">' + l.map(function (d) {
+      var seen = d.last_seen ? new Date(d.last_seen) : null;
+      return '<li><b>' + esc(d.serial) + '</b><span>' + (seen ? 'Son bağlantı ' + seen.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' }) + ' ' + seen.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : 'Henüz internete bağlanmadı') +
+        ' · saatten ' + (d.blocks || 0) + ' kare (' + hours(d.blocks || 0) + ' saat)</span></li>';
+    }).join('') + '</ul>';
   }
   function proModal() {
     var m = $('modal');
-    m.innerHTML = '<div class="sheet form" role="dialog" aria-modal="true" aria-labelledby="mT"><button type="button" class="x" aria-label="Kapat">×</button><p class="label">PixelTime Saat</p><h2 id="mT">Saat kodunu gir</h2>' +
-      '<p class="muted small">Kod, saatin kutusundaki kartta yazar. Kodla Pixel\'in portresi ve Pixel profil kuşu açılır.</p>' +
+    m.innerHTML = '<div class="sheet form" role="dialog" aria-modal="true" aria-labelledby="mT"><button type="button" class="x" aria-label="Kapat">×</button><p class="label">PixelTime Saat</p><h2 id="mT">Saatini bağla</h2>' +
+      '<p class="muted small">Kod, saatin kutusundaki kartta ve saatin ekranında (Ayarlar → Bağlan) yazar. Saat bağlanınca çalışmaların kendiliğinden buraya gelir; Pixel\'in portresi ve Pixel profil kuşu açılır.</p>' +
       '<div class="field"><label for="mCode">Kod</label><input type="text" id="mCode" autocapitalize="characters" class="code-in" maxlength="12"></div>' +
       (TEST ? '<p class="hint">Test modunda kod: PIXEL</p>' : '') + '<button type="button" class="btn primary" id="mGo">Kodu doğrula</button></div>';
     m.hidden = false;
@@ -818,35 +887,154 @@
     $('mGo').addEventListener('click', function () {
       var c = $('mCode').value.trim().toUpperCase();
       if (TEST && c === 'PIXEL') { st.pro = true; save(); close(); toast('Pixel açıldı.', 'good'); render(); return; }
-      toast('Kod doğrulaması PixelTime Saat satışa çıktığında açılacak.', '', 5000);
+      if (!SERVER) return toast('Saat bağlama, site sunucuya bağlanınca açılacak.', '', 5000);
+      if (c.replace(/[^A-Z0-9]/g, '').length < 6) return toast('Kodu eksiksiz yaz.', 'bad');
+      var btn = this; busy(btn);
+      server().then(function () { return st.profileSynced ? null : pushProfile(); }).then(function () { return sb.rpc('claim_device', { p_code: c }); }).then(chk).then(function (r) {
+        st.pro = true; save(); close(); toast('Saatin bağlandı (' + r.serial + '). Pixel açıldı.', 'good', 5000);
+        refreshDevices().catch(function () {}).then(render);
+      }).catch(function (e) {
+        btn.disabled = false; btn.textContent = 'Kodu doğrula';
+        var m = (e && e.message || '').toLowerCase();
+        toast(/bulunamadi/.test(m) ? 'Bu kodla bir saat bulunamadı. Kodu kontrol et.' : /baska hesapta/.test(m) ? 'Bu saat başka bir hesaba bağlı.' : errText(e), 'bad', 5000);
+      });
     });
   }
   function accountBlock() {
-    if (!SERVER) return '<section class="card"><h2>Hesap</h2><p class="muted">Kayıtların şu an yalnızca bu cihazda tutuluyor. Site sunucuya bağlandığında e-postanla hesabını yedekleyip başka cihazdan girebileceksin.</p></section>';
-    return '<section class="card"><h2>Hesap</h2><p class="muted">' +
-      (st.email ? 'Hesabın <b>' + esc(st.email) + '</b> adresine bağlı. Başka cihazdan bu e-postayla girebilirsin.'
+    if (!SERVER) return '<section class="card"><h2>Hesap</h2><p class="muted">Kayıtların şu an yalnızca bu cihazda tutuluyor. Site sunucuya bağlandığında e-posta ve şifreyle hesabını kaydedip başka cihazdan girebileceksin.</p></section>';
+    return '<section class="card form"><h2>Hesap</h2><p class="muted">' +
+      (st.email ? 'Hesabın <b>' + esc(st.email) + '</b> adresine bağlı. Başka cihazdan bu e-posta ve şifrenle girebilirsin.'
         : 'Hesabın şu an yalnızca bu cihazda. Telefonun değişirse ya da tarayıcı verileri silinirse kayıtların kaybolabilir.') +
-      '</p>' + (st.email ? '' : '<button type="button" class="btn ghost" id="bBackup">E-posta ekle</button>') + '</section>';
+      '</p>' + (st.email ? '<button type="button" class="btn ghost" id="bPw">' + (st.needPw ? 'Şifre belirle' : 'Şifreyi değiştir') + '</button>' : '<button type="button" class="btn primary" id="bBackup">Hesabını kaydet</button>') + '</section>';
   }
-  function emailModal(kind) {
-    var m = $('modal');
-    m.innerHTML = '<div class="sheet form" role="dialog" aria-modal="true" aria-labelledby="mT"><button type="button" class="x" aria-label="Kapat">×</button><h2 id="mT">' + (kind === 'login' ? 'E-postanla giriş yap' : 'E-posta ekle') + '</h2>' +
-      '<p class="muted small">' + (kind === 'login' ? 'Hesabına eklediğin e-postayı yaz. Sana bir giriş linki göndereceğiz.' : 'E-postana bir onay linki göndereceğiz. Linke tıklayınca hesabın bu adrese bağlanır.') + '</p>' +
-      '<div class="field"><label for="mEmail">E-posta</label><input type="email" id="mEmail" autocomplete="email" placeholder="ornek@mail.com"></div><button type="button" class="btn primary" id="mSend">Link gönder</button></div>';
-    m.hidden = false;
+  /* ================= Giriş, kayıt, şifre =================
+     Akış: herkes önce anonim hesapla başlar (kayıtlar kaybolmasın diye). "Hesabını kaydet" anonim hesaba
+     e-posta + şifre bağlar. Doğrulama hem linkle hem 6 haneli kodla çalışır; iPhone'da ana ekrana eklenmiş
+     uygulamada link Safari'de açıldığı için kod daha güvenli yoldur. */
+  var AUTH_TITLES = { register: 'Hesabını kaydet', login: 'Giriş yap', forgot: 'Şifremi unuttum', code: 'Kodla giriş', password: 'Yeni şifre belirle' };
+  function pwOk(a, b) {
+    if (a.length < 8) { toast('Şifre en az 8 karakter olmalı.', 'bad'); return false; }
+    if (b != null && a !== b) { toast('Şifreler aynı değil.', 'bad'); return false; }
+    return true;
+  }
+  function authErr(e) {
+    var m = ((e && (e.message || e.error_description || e.code)) || '').toLowerCase();
+    if (/invalid login credentials/.test(m)) return 'E-posta ya da şifre yanlış.';
+    if (/email not confirmed/.test(m)) return 'E-postan henüz doğrulanmamış. Gelen kutundaki kodu gir.';
+    if (/expired|invalid.*(otp|token)|token.*(expired|invalid)|otp_expired/.test(m)) return 'Kod yanlış ya da süresi dolmuş. Yeni kod iste.';
+    if (/already (been )?registered|already exists|email_exists/.test(m)) return 'Bu e-postayla zaten bir hesap var. Giriş yapmayı dene.';
+    if (/rate limit|too many|security purposes|over_email_send_rate_limit/.test(m)) return 'Çok sık denedin. Bir dakika bekleyip tekrar dene.';
+    if (/signups not allowed|user not found|not found/.test(m)) return 'Bu e-postayla bir hesap bulunamadı.';
+    if (/should be different|same_password/.test(m)) return 'Yeni şifre eskisinden farklı olmalı.';
+    if (/weak|password should/.test(m)) return 'Şifre çok zayıf. Harf ve rakam karıştır, en az 8 karakter olsun.';
+    return errText(e);
+  }
+  function codeField() {
+    return '<div class="field"><label for="aCode">E-postana gelen kod</label><input type="text" id="aCode" class="code-in otp" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="______"><p class="hint">Mail gelmediyse spam/gereksiz klasörüne bak. Maildeki linke de tıklayabilirsin.</p></div>';
+  }
+  function pwFields(label, twice) {
+    return '<div class="field"><label for="aPw">' + label + '</label><input type="password" id="aPw" autocomplete="new-password" minlength="8" placeholder="En az 8 karakter"></div>' +
+      (twice ? '<div class="field"><label for="aPw2">Şifre tekrar</label><input type="password" id="aPw2" autocomplete="new-password" minlength="8"></div>' : '');
+  }
+  function authModal(kind, preset) {
+    var m = $('modal'), email = preset || st.email || '';
     var close = function () { m.hidden = true; m.innerHTML = ''; };
-    m.querySelector('.x').addEventListener('click', close);
-    m.onclick = function (e) { if (e.target === m) close(); };
-    $('mSend').addEventListener('click', function () {
-      var email = $('mEmail').value.trim();
-      if (!/^\S+@\S+\.\S+$/.test(email)) return toast('Geçerli bir e-posta yaz.', 'bad');
-      var btn = this; busy(btn);
-      var redirect = location.origin + location.pathname;
-      var p = kind === 'login'
-        ? client().then(function () { return sb.auth.signInWithOtp({ email: email, options: { shouldCreateUser: false, emailRedirectTo: redirect } }); })
-        : server().then(function () { return sb.auth.updateUser({ email: email }, { emailRedirectTo: redirect }); });
-      p.then(chk).then(function () { if (kind === 'backup') { st.email = email; save(); } close(); toast('Link gönderildi. E-postanı kontrol et.', 'good', 6000); })
-        .catch(function (e) { btn.disabled = false; btn.textContent = 'Link gönder'; toast(/not found|Signups not allowed/i.test(e.message || '') ? 'Bu e-postayla bir hesap bulunamadı.' : errText(e), 'bad'); });
+    function shell(title, body, foot) {
+      m.innerHTML = '<div class="sheet form auth" role="dialog" aria-modal="true" aria-labelledby="mT"><button type="button" class="x" aria-label="Kapat">×</button><h2 id="mT">' + title + '</h2>' + body + (foot ? '<p class="alt">' + foot + '</p>' : '') + '</div>';
+      m.hidden = false;
+      m.querySelector('.x').addEventListener('click', close);
+      m.onclick = function (e) { if (e.target === m) close(); };
+      Array.prototype.forEach.call(m.querySelectorAll('[data-go]'), function (a) { a.addEventListener('click', function (e) { e.preventDefault(); var em = $('aEmail'); authModal(a.getAttribute('data-go'), em ? em.value.trim() : email); }); });
+      var f = m.querySelector('input'); if (f) setTimeout(function () { f.focus(); }, 50);
+    }
+    function emailField() { return '<div class="field"><label for="aEmail">E-posta</label><input type="email" id="aEmail" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="ornek@mail.com" value="' + esc(email) + '"></div>'; }
+    function readEmail() { var v = ($('aEmail') ? $('aEmail').value : email).trim().toLowerCase(); if (!/^\S+@\S+\.\S+$/.test(v)) { toast('Geçerli bir e-posta yaz.', 'bad'); return null; } return v; }
+    function run(btn, label, p) {
+      var t = btn.textContent; busy(btn);
+      return p.then(function (r) { if (r && r.error) throw r.error; return r; }).catch(function (e) { btn.disabled = false; btn.textContent = label || t; toast(authErr(e), 'bad', 5000); throw e; });
+    }
+    function bind(id, fn) { var b = $(id); b.addEventListener('click', function () { fn(b); }); m.querySelector('.sheet').addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); b.click(); } }); }
+    function code() { return ($('aCode').value || '').replace(/\D/g, ''); }
+    /* Doğrulama kodu adımı: ok(code) kodu sunucuda doğrular */
+    function codeStep(title, lead, verify, resend) {
+      shell(title, '<p class="muted small">' + lead + '</p>' + codeField() + '<button type="button" class="btn primary" id="aGo">Doğrula</button>',
+        '<a href="#" id="aResend">Kodu tekrar gönder</a>');
+      bind('aGo', function (b) { var c = code(); if (c.length < 6) return toast('Kodu eksiksiz yaz.', 'bad'); run(b, 'Doğrula', verify(c)).catch(function () {}); });
+      $('aResend').addEventListener('click', function (e) { e.preventDefault(); resend().then(function (r) { if (r && r.error) throw r.error; toast('Yeni kod gönderildi.', 'good'); }).catch(function (er) { toast(authErr(er), 'bad'); }); });
+    }
+    function signedIn(msg) {
+      return sb.auth.getUser().then(function (r) {
+        user = r.data && r.data.user || user; ready = Promise.resolve(user);
+        st.email = user && user.email || st.email; st.needPw = false; save();
+        return st.profile ? Promise.resolve(false) : restore();
+      }).then(function () { close(); toast(msg, 'good', 5000); render(); sync(); });
+    }
+
+    if (kind === 'register') {
+      shell(AUTH_TITLES.register, '<p class="muted small">Kareler, portreler ve saatlerin bu hesaba bağlanır. Telefonun değişse bile e-posta ve şifrenle her cihazdan girersin.</p>' +
+        emailField() + pwFields('Şifre', true) + '<button type="button" class="btn primary" id="aGo">Kodu gönder</button>',
+        'Zaten hesabın var mı? <a href="#" data-go="login">Giriş yap</a>');
+      bind('aGo', function (b) {
+        var em = readEmail(); if (!em) return; var pw = $('aPw').value; if (!pwOk(pw, $('aPw2').value)) return;
+        email = em; st.needPw = true; save();
+        run(b, 'Kodu gönder', server().then(function () { return sb.auth.updateUser({ email: em }, { emailRedirectTo: location.origin + location.pathname }); })).then(function () {
+          codeStep('E-postanı doğrula', '<b>' + esc(em) + '</b> adresine bir kod gönderdik.',
+            function (c) { return sb.auth.verifyOtp({ email: em, token: c, type: 'email_change' }).then(function (r) { if (r.error) throw r.error; return sb.auth.updateUser({ password: pw }); }).then(function (r) { if (r.error) throw r.error; return signedIn('Hesabın kaydedildi. Artık her cihazdan girebilirsin.'); }); },
+            function () { return sb.auth.updateUser({ email: em }); });
+        }).catch(function () {});
+      });
+    } else if (kind === 'login') {
+      shell(AUTH_TITLES.login, emailField() + '<div class="field"><label for="aPw">Şifre</label><input type="password" id="aPw" autocomplete="current-password"></div>' +
+        '<button type="button" class="btn primary" id="aGo">Giriş yap</button>',
+        '<a href="#" data-go="forgot">Şifremi unuttum</a> · <a href="#" data-go="code">Şifresiz, kodla gir</a>');
+      bind('aGo', function (b) {
+        var em = readEmail(); if (!em) return; var pw = $('aPw').value; if (!pw) return toast('Şifreni yaz.', 'bad');
+        run(b, 'Giriş yap', client().then(function () { return sb.auth.signInWithPassword({ email: em, password: pw }); }))
+          .then(function () { return signedIn('Tekrar hoş geldin.'); }).catch(function () {});
+      });
+    } else if (kind === 'code') {
+      shell(AUTH_TITLES.code, '<p class="muted small">E-postana tek kullanımlık bir kod gönderelim, şifresiz gir.</p>' + emailField() + '<button type="button" class="btn primary" id="aGo">Kodu gönder</button>',
+        '<a href="#" data-go="login">Şifreyle giriş</a>');
+      bind('aGo', function (b) {
+        var em = readEmail(); if (!em) return;
+        var send = function () { return sb.auth.signInWithOtp({ email: em, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname } }); };
+        run(b, 'Kodu gönder', client().then(send)).then(function () {
+          codeStep('Kodu gir', '<b>' + esc(em) + '</b> adresine bir kod gönderdik.',
+            function (c) { return sb.auth.verifyOtp({ email: em, token: c, type: 'email' }).then(function (r) { if (r.error) throw r.error; return signedIn('Tekrar hoş geldin.'); }); }, send);
+        }).catch(function () {});
+      });
+    } else if (kind === 'forgot') {
+      shell(AUTH_TITLES.forgot, '<p class="muted small">E-postana bir kod gönderelim, yeni şifreni belirle.</p>' + emailField() + '<button type="button" class="btn primary" id="aGo">Kodu gönder</button>',
+        '<a href="#" data-go="login">Girişe dön</a>');
+      bind('aGo', function (b) {
+        var em = readEmail(); if (!em) return;
+        var send = function () { return sb.auth.resetPasswordForEmail(em, { redirectTo: location.origin + location.pathname }); };
+        run(b, 'Kodu gönder', client().then(send)).then(function () {
+          shell('Yeni şifre', '<p class="muted small"><b>' + esc(em) + '</b> adresine bir kod gönderdik.</p>' + codeField() + pwFields('Yeni şifre', true) +
+            '<button type="button" class="btn primary" id="aGo">Şifreyi değiştir</button>', '<a href="#" id="aResend">Kodu tekrar gönder</a>');
+          $('aResend').addEventListener('click', function (e) { e.preventDefault(); send().then(function (r) { if (r && r.error) throw r.error; toast('Yeni kod gönderildi.', 'good'); }).catch(function (er) { toast(authErr(er), 'bad'); }); });
+          bind('aGo', function (b2) {
+            var c = code(), pw = $('aPw').value; if (c.length < 6) return toast('Kodu eksiksiz yaz.', 'bad'); if (!pwOk(pw, $('aPw2').value)) return;
+            run(b2, 'Şifreyi değiştir', sb.auth.verifyOtp({ email: em, token: c, type: 'recovery' }).then(function (r) { if (r.error) throw r.error; return sb.auth.updateUser({ password: pw }); }))
+              .then(function () { return signedIn('Şifren değişti, giriş yaptın.'); }).catch(function () {});
+          });
+        }).catch(function () {});
+      });
+    } else if (kind === 'password') {
+      shell(AUTH_TITLES.password, '<p class="muted small">' + (st.email ? esc(st.email) + ' hesabı için yeni şifre.' : '') + '</p>' + pwFields('Yeni şifre', true) + '<button type="button" class="btn primary" id="aGo">Kaydet</button>');
+      bind('aGo', function (b) {
+        var pw = $('aPw').value; if (!pwOk(pw, $('aPw2').value)) return;
+        run(b, 'Kaydet', server().then(function () { return sb.auth.updateUser({ password: pw }); })).then(function () { st.needPw = false; save(); close(); toast('Şifren kaydedildi.', 'good'); render(); }).catch(function () {});
+      });
+    }
+  }
+  /* Linkten dönüş: şifre sıfırlama linki ya da kayıt linki tıklandıysa şifre belirleme penceresini aç */
+  function watchAuth() {
+    if (!sb || watchAuth.on) return; watchAuth.on = true;
+    sb.auth.onAuthStateChange(function (ev, session) {
+      if (session && session.user) { user = session.user; if (user.email && st.email !== user.email) { st.email = user.email; save(); } }
+      if (ev === 'PASSWORD_RECOVERY') setTimeout(function () { authModal('password'); }, 300);
+      else if (ev === 'USER_UPDATED' && st.needPw && user && user.email && !user.new_email) setTimeout(function () { if ($('modal').hidden) authModal('password'); }, 300);
     });
   }
 
@@ -909,7 +1097,8 @@
     $('sGoal').addEventListener('change', function () { st.goal = +this.value; save(); toast('Günlük hedef kaydedildi.', 'good'); });
     $('sSound').addEventListener('change', function () { st.sound = this.checked; save(); });
     $('sPublic').addEventListener('change', function () { st.isPublic = this.value === '1'; st.profileSynced = false; save(); hint(); if (SERVER) pushProfile().catch(function (e) { console.warn(e); }); toast('Gizlilik ayarı kaydedildi.', 'good'); });
-    if ($('bBackup')) $('bBackup').addEventListener('click', function () { emailModal('backup'); });
+    if ($('bBackup')) $('bBackup').addEventListener('click', function () { authModal('register'); });
+    if ($('bPw')) $('bPw').addEventListener('click', function () { authModal('password'); });
     $('sOut').addEventListener('click', logout);
   }
 
@@ -957,15 +1146,18 @@
   }
 
   /* ================= Paylaşım görselleri ================= */
-  var FS = '"Newsreader",Georgia,serif', FU = '"IBM Plex Sans",system-ui,sans-serif', FM = '"IBM Plex Mono",ui-monospace,monospace';
+  var FS = '"Bitter",Georgia,serif', FU = '"IBM Plex Sans",system-ui,sans-serif', FM = '"IBM Plex Mono",ui-monospace,monospace';
   function loadImg(src) { return new Promise(function (ok) { var i = new Image(); i.onload = function () { ok(i); }; i.onerror = function () { ok(null); }; i.src = src; }); }
   function baseCard(W, H, logo) {
     var c = document.createElement('canvas'); c.width = W; c.height = H;
     var g = c.getContext('2d');
-    g.fillStyle = '#f3efe6'; g.fillRect(0, 0, W, H);
-    g.strokeStyle = '#17191c'; g.lineWidth = 3; g.strokeRect(40, 40, W - 80, H - 80);
-    if (logo) g.drawImage(logo, 90, 90, 110, 110 * logo.height / logo.width);
-    g.fillStyle = '#17191c'; g.font = '600 64px ' + FS; g.textBaseline = 'alphabetic'; g.fillText('PixelTime', 220, 168);
+    g.fillStyle = '#e8ece3'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#183522'; g.fillRect(0, 0, W, 24); g.fillRect(0, H - 24, W, 24);
+    g.fillStyle = '#f4c521'; g.fillRect(0, 24, W, 6); g.fillRect(0, H - 30, W, 6);
+    g.strokeStyle = '#183522'; g.lineWidth = 3; g.strokeRect(40, 60, W - 80, H - 120);
+    g.beginPath(); g.arc(145, 143, 66, 0, 7); g.fillStyle = '#f4c521'; g.fill();
+    if (logo) g.drawImage(logo, 100, 100, 90, 90 * logo.height / logo.width);
+    g.fillStyle = '#17231b'; g.font = '600 64px ' + FS; g.textBaseline = 'alphabetic'; g.fillText('PixelTime', 220, 168);
     return { c: c, g: g };
   }
   function shareCanvas(kind, item) {
@@ -984,18 +1176,18 @@
     var opened = isTeam ? Math.min(s.opened.length, t.cells) : P.opened, cells = isTeam ? t.cells : CELLS;
     loadImg('img/pixel-logo-kucuk.svg').then(function (logo) {
       var W = 1080, H = 1350, k = baseCard(W, H, logo), g = k.g;
-      g.fillStyle = '#5b5f66'; g.font = '400 32px ' + FU; g.textAlign = 'right'; g.fillText('Sezon ' + SEASON, W - 90, 160); g.textAlign = 'left';
-      g.fillStyle = '#ffffff'; g.fillRect(140, 250, 800, 800); g.strokeStyle = '#17191c'; g.lineWidth = 2; g.strokeRect(140, 250, 800, 800);
+      g.fillStyle = '#56655b'; g.font = '400 32px ' + FU; g.textAlign = 'right'; g.fillText('Sezon ' + SEASON, W - 90, 160); g.textAlign = 'left';
+      g.fillStyle = '#ffffff'; g.fillRect(140, 250, 800, 800); g.strokeStyle = '#17231b'; g.lineWidth = 2; g.strokeRect(140, 250, 800, 800);
       g.drawImage(src, 170, 280, 740, 740);
-      g.fillStyle = '#17191c'; g.font = '600 52px ' + FS;
+      g.fillStyle = '#17231b'; g.font = '600 52px ' + FS;
       g.fillText(full ? b.name : (isTeam ? t.name : 'Portre No. ' + st.canvasNo), 140, 1130);
-      if (isCol || (full && !isTeam)) { g.textAlign = 'right'; g.fillStyle = '#5b5f66'; g.font = '400 30px ' + FU; g.fillText('Portre No. ' + (isCol ? item.no : st.canvasNo), W - 90, 205); g.textAlign = 'left'; g.fillStyle = '#17191c'; g.font = '600 52px ' + FS; }
-      g.font = 'italic 500 34px ' + FS; g.fillStyle = '#5b5f66';
+      if (isCol || (full && !isTeam)) { g.textAlign = 'right'; g.fillStyle = '#56655b'; g.font = '400 30px ' + FU; g.fillText('Portre No. ' + (isCol ? item.no : st.canvasNo), W - 90, 205); g.textAlign = 'left'; g.fillStyle = '#17231b'; g.font = '600 52px ' + FS; }
+      g.font = 'italic 500 34px ' + FS; g.fillStyle = '#56655b';
       g.fillText(full ? b.latin : (isTeam ? 'Ekip portresi' : 'Gizli tür'), 140, 1180);
-      g.textAlign = 'right'; g.font = '500 40px ' + FM; g.fillStyle = '#17191c'; g.fillText(opened + ' / ' + cells, 940, 1130);
-      g.font = '400 30px ' + FU; g.fillStyle = '#5b5f66'; g.fillText(hours(opened) + ' saat odak', 940, 1180);
-      g.textAlign = 'left'; g.fillStyle = '#3f5f9e'; g.font = '500 34px ' + FM; g.fillText(TAG, 90, H - 80);
-      g.textAlign = 'right'; g.fillStyle = '#5b5f66'; g.font = '400 30px ' + FU; g.fillText(location.host + location.pathname.replace(/index\.html$/, ''), W - 90, H - 80);
+      g.textAlign = 'right'; g.font = '500 40px ' + FM; g.fillStyle = '#17231b'; g.fillText(opened + ' / ' + cells, 940, 1130);
+      g.font = '400 30px ' + FU; g.fillStyle = '#56655b'; g.fillText(hours(opened) + ' saat odak', 940, 1180);
+      g.textAlign = 'left'; g.fillStyle = '#2b7a3a'; g.font = '500 34px ' + FM; g.fillText(TAG, 90, H - 80);
+      g.textAlign = 'right'; g.fillStyle = '#56655b'; g.font = '400 30px ' + FU; g.fillText(location.host + location.pathname.replace(/index\.html$/, ''), W - 90, H - 80);
       showImage(k.c, 'Tuvalini paylaş', 'pixeltime-portre.png', 'PixelTime\'da portremi açıyorum. ' + TAG);
     });
   }
@@ -1005,27 +1197,27 @@
     drawCanvas(src, N, P.opened, P.seed, P.bird);
     Promise.all([loadImg('img/pixel-logo-kucuk.svg'), photoUrls(p.bird, 500).then(function (l) { return loadFirst(l, true); })]).then(function (r) {
       var logo = r[0], pic = r[1], W = 1080, H = 1920, k = baseCard(W, H, logo), g = k.g;
-      g.fillStyle = '#5b5f66'; g.font = '400 32px ' + FU; g.textAlign = 'right'; g.fillText('Sezon ' + SEASON + ' kartı', W - 90, 160); g.textAlign = 'left';
+      g.fillStyle = '#56655b'; g.font = '400 32px ' + FU; g.textAlign = 'right'; g.fillText('Sezon ' + SEASON + ' kartı', W - 90, 160); g.textAlign = 'left';
       var cx = 190, cy = 360, R = 100;
       var grd = g.createLinearGradient(cx - R, cy - R, cx + R, cy + R); grd.addColorStop(0, p.color); grd.addColorStop(1, p.color2 || p.color);
       g.beginPath(); g.arc(cx, cy, R + 10, 0, 7); g.fillStyle = grd; g.fill();
-      g.save(); g.beginPath(); g.arc(cx, cy, R, 0, 7); g.clip(); g.fillStyle = '#ddd5c6'; g.fillRect(cx - R, cy - R, 2 * R, 2 * R);
-      if (pic) { var sd = Math.min(pic.width, pic.height); g.drawImage(pic, (pic.width - sd) / 2, (pic.height - sd) * 0.4, sd, sd, cx - R, cy - R, 2 * R, 2 * R); }
+      g.save(); g.beginPath(); g.arc(cx, cy, R, 0, 7); g.clip(); g.fillStyle = '#d3dbcc'; g.fillRect(cx - R, cy - R, 2 * R, 2 * R);
+      if (pic) { var sd = Math.min(pic.width, pic.height), pb = bird(p.bird); g.drawImage(pic, (pic.width - sd) * pb.fx, (pic.height - sd) * pb.fy, sd, sd, cx - R, cy - R, 2 * R, 2 * R); }
       g.restore();
-      g.fillStyle = '#17191c'; g.font = '600 76px ' + FS; g.fillText(p.nickname, 330, 360);
-      g.fillStyle = '#5b5f66'; g.font = '400 32px ' + FU; g.fillText([p.exam, p.city, p.school].filter(Boolean).join(' · ') || birdName(p.bird), 330, 412);
+      g.fillStyle = '#17231b'; g.font = '600 76px ' + FS; g.fillText(p.nickname, 330, 360);
+      g.fillStyle = '#56655b'; g.font = '400 32px ' + FU; g.fillText([p.exam, p.city, p.school].filter(Boolean).join(' · ') || birdName(p.bird), 330, 412);
       var rows = [[s.total, 'kare'], [s.hours, 'saat odak'], [s.streak, 'gün üst üste'], [s.birds, 'portre']];
       g.strokeStyle = '#d9d1c1'; g.lineWidth = 2;
       rows.forEach(function (row, i) {
         var x = 90 + (i % 2) * 460, y = 520 + Math.floor(i / 2) * 210;
         g.beginPath(); g.moveTo(x, y); g.lineTo(x + 420, y); g.stroke();
-        g.fillStyle = '#17191c'; g.font = '500 96px ' + FM; g.fillText(String(row[0]), x, y + 110);
-        g.fillStyle = '#5b5f66'; g.font = '400 32px ' + FU; g.fillText(row[1], x, y + 160);
+        g.fillStyle = '#17231b'; g.font = '500 96px ' + FM; g.fillText(String(row[0]), x, y + 110);
+        g.fillStyle = '#56655b'; g.font = '400 32px ' + FU; g.fillText(row[1], x, y + 160);
       });
-      g.fillStyle = '#ffffff'; g.fillRect(140, 960, 800, 800); g.strokeStyle = '#17191c'; g.strokeRect(140, 960, 800, 800);
+      g.fillStyle = '#ffffff'; g.fillRect(140, 960, 800, 800); g.strokeStyle = '#17231b'; g.strokeRect(140, 960, 800, 800);
       g.drawImage(src, 170, 990, 740, 740);
-      g.fillStyle = '#3f5f9e'; g.font = '500 34px ' + FM; g.fillText(TAG, 90, H - 80);
-      g.textAlign = 'right'; g.fillStyle = '#5b5f66'; g.font = '400 30px ' + FU; g.fillText(location.host + location.pathname.replace(/index\.html$/, ''), W - 90, H - 80);
+      g.fillStyle = '#2b7a3a'; g.font = '500 34px ' + FM; g.fillText(TAG, 90, H - 80);
+      g.textAlign = 'right'; g.fillStyle = '#56655b'; g.font = '400 30px ' + FU; g.fillText(location.host + location.pathname.replace(/index\.html$/, ''), W - 90, H - 80);
       showImage(k.c, 'Sezon kartın', 'pixeltime-sezon-karti.png', 'PixelTime sezon kartım. ' + TAG);
     });
   }

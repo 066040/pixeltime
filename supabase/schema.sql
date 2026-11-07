@@ -51,6 +51,24 @@ create table if not exists public.blocks (
   created_at  timestamptz not null default now(),
   unique (user_id, client_id)
 );
+-- ---------- PixelTime Saat ----------
+-- Her saatin seri numarası, gizli anahtarı ve kutudaki kartta yazan eşleştirme kodu.
+-- Bu tabloya hiçbir kural (policy) verilmez: site ya da saat doğrudan okuyamaz, sadece fonksiyonlar okur.
+create table if not exists public.devices (
+  id          uuid primary key default gen_random_uuid(),
+  serial      text not null unique check (serial ~ '^PT-[0-9A-Z]{4,10}$'),
+  secret      text not null check (char_length(secret) >= 32),
+  claim_code  text not null unique check (claim_code ~ '^[A-Z0-9]{6,10}$'),
+  owner       uuid references auth.users (id) on delete set null,
+  name        text,
+  fw          text,
+  claimed_at  timestamptz,
+  last_seen   timestamptz,
+  created_at  timestamptz not null default now()
+);
+create index if not exists devices_owner_idx on public.devices (owner);
+alter table public.blocks add column if not exists device_id uuid references public.devices (id) on delete set null;
+
 create index if not exists blocks_user_idx on public.blocks (user_id, started_at);
 create index if not exists blocks_team_idx on public.blocks (team_id, id);
 create index if not exists blocks_time_idx on public.blocks (started_at);
@@ -60,6 +78,7 @@ create index if not exists profiles_team_idx on public.profiles (team_id);
 alter table public.profiles enable row level security;
 alter table public.teams    enable row level security;
 alter table public.blocks   enable row level security;
+alter table public.devices  enable row level security;
 
 drop policy if exists "profil okuma" on public.profiles;
 create policy "profil okuma" on public.profiles for select to authenticated using (true);
@@ -92,23 +111,59 @@ create trigger profiles_guard before update on public.profiles
   for each row execute function public.guard_profile_team();
 
 -- ---------- Blok kaydı (hile önlemli) ----------
+-- Saatten gelen bloklar için mod 'saat'; hangi saatten geldiği device_id'de tutulur
+alter table public.blocks drop constraint if exists blocks_mode_check;
+alter table public.blocks add constraint blocks_mode_check check (mode in ('pomodoro', 'kronometre', 'saat'));
+
+-- Tek bir bloğu kurallara göre ekler. Dönen değer: null = kabul, değilse ret sebebi.
+-- Hem siteden (record_blocks) hem saatten (device_record) gelen kayıtlar bu kapıdan geçer.
+create or replace function public.add_block(me uuid, cid text, s timestamptz, e timestamptz, m text, dev uuid default null)
+returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  my_team uuid; team_cells int; day_count int;
+begin
+  if cid is null or char_length(cid) > 64 then return 'kimlik'; end if;
+  -- aynı blok ikinci kez gelirse: zaten kayıtlı, kabul say
+  if exists (select 1 from blocks where user_id = me and client_id = cid) then return null; end if;
+  if m not in ('pomodoro', 'kronometre', 'saat') then return 'mod'; end if;
+  -- 25 dakika (küçük saat farklarına tolerans)
+  if e - s < interval '24 minutes 30 seconds' or e - s > interval '26 minutes' then return 'sure'; end if;
+  -- gelecekte bitmiş ya da çok eski olamaz
+  if e > now() + interval '2 minutes' or s < now() - interval '14 days' then return 'zaman'; end if;
+  -- aynı anda iki çalışma olamaz (site + saat aynı anda da sayılmaz)
+  if exists (select 1 from blocks where user_id = me
+             and tstzrange(started_at, ended_at, '[)') && tstzrange(s, e, '[)')) then return 'cakisma'; end if;
+  -- günde en fazla 28 blok (~12 saat), Türkiye saatine göre
+  select count(*) into day_count from blocks where user_id = me
+    and (started_at at time zone 'Europe/Istanbul')::date = (s at time zone 'Europe/Istanbul')::date;
+  if day_count >= 28 then return 'gunluk'; end if;
+
+  -- ekip tuvalinde yer varsa ekibe de yaz
+  select team_id into my_team from profiles where id = me;
+  team_cells := null;
+  if my_team is not null then
+    select cells into team_cells from teams where id = my_team;
+    if (select count(*) from blocks where team_id = my_team) >= team_cells then team_cells := null; end if;
+  end if;
+
+  insert into blocks (user_id, client_id, started_at, ended_at, mode, team_id, device_id)
+  values (me, cid, s, e, m, case when team_cells is not null then my_team end, dev);
+  return null;
+end $$;
+
 -- p_blocks: [{"client_id":"...","started_at":"...","ended_at":"...","mode":"pomodoro"}]
 create or replace function public.record_blocks(p_blocks jsonb)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   me uuid := auth.uid();
-  b jsonb;
-  s timestamptz; e timestamptz; m text; cid text;
-  my_team uuid; team_cells int;
+  b jsonb; s timestamptz; e timestamptz; cid text; why text;
   ok text[] := '{}'; bad jsonb := '[]'::jsonb;
-  day_count int;
 begin
   if me is null then raise exception 'giris gerekli'; end if;
   if not exists (select 1 from profiles where id = me) then raise exception 'profil yok'; end if;
   if jsonb_typeof(p_blocks) <> 'array' or jsonb_array_length(p_blocks) > 60 then raise exception 'gecersiz istek'; end if;
-
-  select team_id into my_team from profiles where id = me;
 
   for b in select * from jsonb_array_elements(p_blocks) loop
     cid := b->>'client_id';
@@ -118,41 +173,12 @@ begin
     exception when others then
       bad := bad || jsonb_build_object('client_id', cid, 'reason', 'tarih'); continue;
     end;
-    m := coalesce(b->>'mode', 'pomodoro');
-
-    if cid is null or char_length(cid) > 64 then
-      bad := bad || jsonb_build_object('client_id', cid, 'reason', 'kimlik'); continue; end if;
-    -- aynı blok ikinci kez gelirse: zaten kayıtlı, kabul say
-    if exists (select 1 from blocks where user_id = me and client_id = cid) then
-      ok := ok || cid; continue; end if;
-    if m not in ('pomodoro', 'kronometre') then
+    -- 'saat' modu sadece saatin kendisinden gelebilir
+    if coalesce(b->>'mode', 'pomodoro') = 'saat' then
       bad := bad || jsonb_build_object('client_id', cid, 'reason', 'mod'); continue; end if;
-    -- 25 dakika (küçük saat farklarına tolerans)
-    if e - s < interval '24 minutes 30 seconds' or e - s > interval '26 minutes' then
-      bad := bad || jsonb_build_object('client_id', cid, 'reason', 'sure'); continue; end if;
-    -- gelecekte bitmiş ya da çok eski olamaz
-    if e > now() + interval '2 minutes' or s < now() - interval '14 days' then
-      bad := bad || jsonb_build_object('client_id', cid, 'reason', 'zaman'); continue; end if;
-    -- aynı anda iki çalışma olamaz
-    if exists (select 1 from blocks where user_id = me
-               and tstzrange(started_at, ended_at, '[)') && tstzrange(s, e, '[)')) then
-      bad := bad || jsonb_build_object('client_id', cid, 'reason', 'cakisma'); continue; end if;
-    -- günde en fazla 28 blok (~12 saat), Türkiye saatine göre
-    select count(*) into day_count from blocks where user_id = me
-      and (started_at at time zone 'Europe/Istanbul')::date = (s at time zone 'Europe/Istanbul')::date;
-    if day_count >= 28 then
-      bad := bad || jsonb_build_object('client_id', cid, 'reason', 'gunluk'); continue; end if;
-
-    -- ekip tuvalinde yer varsa ekibe de yaz
-    team_cells := null;
-    if my_team is not null then
-      select cells into team_cells from teams where id = my_team;
-      if (select count(*) from blocks where team_id = my_team) >= team_cells then team_cells := null; end if;
-    end if;
-
-    insert into blocks (user_id, client_id, started_at, ended_at, mode, team_id)
-    values (me, cid, s, e, m, case when team_cells is not null then my_team end);
-    ok := ok || cid;
+    why := add_block(me, cid, s, e, coalesce(b->>'mode', 'pomodoro'), null);
+    if why is null then ok := ok || cid;
+    else bad := bad || jsonb_build_object('client_id', cid, 'reason', why); end if;
   end loop;
 
   return jsonb_build_object('accepted', to_jsonb(ok), 'rejected', bad);
@@ -296,8 +322,83 @@ begin
     'total', (select count(*) from blocks b where b.user_id = p.id));
 end $$;
 
+-- ---------- PixelTime Saat: eşleştirme ve saatten kayıt ----------
+-- Siteden: kutudaki kodu (ya da saatin ekranındaki kodu) girince saat bu hesaba bağlanır.
+create or replace function public.claim_device(p_code text)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  d devices;
+begin
+  if auth.uid() is null then raise exception 'giris gerekli'; end if;
+  select * into d from devices where claim_code = upper(regexp_replace(coalesce(p_code, ''), '[^A-Za-z0-9]', '', 'g'));
+  if d.id is null then raise exception 'saat bulunamadi'; end if;
+  if d.owner is not null and d.owner <> auth.uid() then raise exception 'saat baska hesapta'; end if;
+  update devices set owner = auth.uid(), claimed_at = coalesce(claimed_at, now()) where id = d.id;
+  return jsonb_build_object('serial', d.serial);
+end $$;
+
+-- Sitede "Saatim" kartı için: bu hesaba bağlı saatler ve saatten gelen kare sayısı
+create or replace function public.my_devices()
+returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('serial', d.serial, 'fw', d.fw, 'last_seen', d.last_seen, 'claimed_at', d.claimed_at,
+    'blocks', (select count(*) from blocks b where b.device_id = d.id)) order by d.claimed_at), '[]'::jsonb)
+  from devices d where d.owner = auth.uid();
+$$;
+
+create or replace function public.release_device(p_serial text)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'giris gerekli'; end if;
+  update devices set owner = null where serial = p_serial and owner = auth.uid();
+end $$;
+
+-- Saatten: Wi-Fi bulunca biriktirdiği blokları imzalı olarak gönderir. Giriş gerekmez, imza yeterli.
+-- p_ts: saatin gönderdiği an (unix saniye) · p_blocks: [{"c":"blok-kimliği","s":başlangıç,"e":bitiş}] (unix saniye)
+-- p_sig: HMAC-SHA256(secret, serial|ts|c,s,e;c,s,e;...) onaltılık (hex)
+create or replace function public.device_record(p_serial text, p_ts bigint, p_blocks jsonb, p_sig text, p_fw text default null)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  d devices; msg text; b jsonb; why text; cid text;
+  ok text[] := '{}'; bad jsonb := '[]'::jsonb;
+begin
+  select * into d from devices where serial = p_serial;
+  if d.id is null then raise exception 'saat bulunamadi'; end if;
+  if jsonb_typeof(p_blocks) <> 'array' or jsonb_array_length(p_blocks) > 60 then raise exception 'gecersiz istek'; end if;
+  -- saatin saati 10 dakikadan fazla kaymışsa (ya da eski bir istek tekrar gönderildiyse) reddet
+  if abs(extract(epoch from now()) - p_ts) > 600 then raise exception 'saat ayari'; end if;
+
+  select p_serial || '|' || p_ts || '|' || coalesce(string_agg((x.v->>'c') || ',' || (x.v->>'s') || ',' || (x.v->>'e'), ';' order by x.i), '')
+    into msg from jsonb_array_elements(p_blocks) with ordinality as x(v, i);
+  if lower(coalesce(p_sig, '')) <> encode(extensions.hmac(msg, d.secret, 'sha256'), 'hex') then raise exception 'imza'; end if;
+
+  update devices set last_seen = now(), fw = coalesce(left(p_fw, 20), fw) where id = d.id;
+  -- sahibi yoksa kayıtları kabul etme ama saat tekrar denemesin diye "bekliyor" de
+  if d.owner is null or not exists (select 1 from profiles where id = d.owner) then
+    return jsonb_build_object('accepted', '[]'::jsonb, 'rejected', '[]'::jsonb, 'unclaimed', true, 'code', d.claim_code);
+  end if;
+
+  for b in select * from jsonb_array_elements(p_blocks) loop
+    cid := 'saat-' || d.serial || '-' || (b->>'c');
+    begin
+      why := add_block(d.owner, cid, to_timestamp((b->>'s')::bigint), to_timestamp((b->>'e')::bigint), 'saat', d.id);
+    exception when others then why := 'tarih'; end;
+    if why is null then ok := ok || (b->>'c');
+    else bad := bad || jsonb_build_object('c', b->>'c', 'reason', why); end if;
+  end loop;
+  return jsonb_build_object('accepted', to_jsonb(ok), 'rejected', bad);
+end $$;
+
 -- Fonksiyon yetkileri
+revoke all on function public.add_block(uuid, text, timestamptz, timestamptz, text, uuid) from public, anon, authenticated;
 revoke all on function public.record_blocks(jsonb) from public;
+revoke all on function public.claim_device(text) from public;
+revoke all on function public.my_devices() from public;
+revoke all on function public.release_device(text) from public;
+revoke all on function public.device_record(text, bigint, jsonb, text, text) from public;
 revoke all on function public.create_team(text, int) from public;
 revoke all on function public.join_team(text) from public;
 revoke all on function public.leave_team() from public;
@@ -305,6 +406,10 @@ revoke all on function public.team_state(uuid) from public;
 revoke all on function public.leaderboard(text, timestamptz, text) from public;
 revoke all on function public.public_profile(uuid) from public;
 grant execute on function public.record_blocks(jsonb) to authenticated;
+grant execute on function public.claim_device(text) to authenticated;
+grant execute on function public.my_devices() to authenticated;
+grant execute on function public.release_device(text) to authenticated;
+grant execute on function public.device_record(text, bigint, jsonb, text, text) to anon, authenticated;
 grant execute on function public.create_team(text, int) to authenticated;
 grant execute on function public.join_team(text) to authenticated;
 grant execute on function public.leave_team() to authenticated;
