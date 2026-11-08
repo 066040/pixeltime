@@ -2,6 +2,7 @@
 # Gerekli gizli bilgiler (Settings → Secrets and variables → Actions):
 #   SUPABASE_DB_URL  : Supabase → Connect → "Session pooler" bağlantı adresi (şifre içinde yazılı olarak)
 #   YEDEK_SIFRESI    : Yedeği açmak için kendi belirlediğin uzun bir şifre. Bunu kaybetme!
+# Sonra Variables sekmesinde YEDEK_ACIK = evet ekle; görev ancak o zaman çalışır.
 # Yedek, repo herkese açık olduğu için şifreli saklanır (içinde kullanıcı e-postaları var).
 name: Gece yedeği
 
@@ -13,6 +14,8 @@ on:
 jobs:
   yedek:
     runs-on: ubuntu-latest
+    # Gizli bilgiler girilene kadar sessizce atlanır (her gece hata maili gelmesin)
+    if: ${{ vars.YEDEK_ACIK == 'evet' }}
     steps:
       - name: PostgreSQL 17 istemcisini kur
         run: |
