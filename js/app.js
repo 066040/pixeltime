@@ -548,7 +548,7 @@
   function renderMe() {
     var p = st.profile, el = $('me');
     $('acct').hidden = !p; if (!p) return;
-    el.innerHTML = '<span>' + esc(p.nickname) + '</span>' + av(p.bird, p.color, p.color2, 40) + '<svg class="chev" viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
+    el.innerHTML = '<span>' + esc(p.nickname) + '</span>' + av(p.bird, p.color, p.color2, 50) + '<svg class="chev" viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
     el.setAttribute('aria-label', 'Hesap menüsü: ' + p.nickname);
   }
   /* Hesap menüsü: profil, ayarlar, yardım, çıkış */
@@ -722,7 +722,7 @@
       var list = s.members.slice().sort(function (a, b) { return teamUi.sort === 'ad' ? a.nickname.localeCompare(b.nickname, 'tr') : b.count - a.count; });
       $('tMembers').innerHTML = list.map(function (m) {
         if (m.id === me() && st.profile) m = Object.assign({}, m, { bird: st.profile.bird, color: st.profile.color, color2: st.profile.color2, nickname: st.profile.nickname });
-        return '<li' + (m.id === me() ? ' class="mine"' : '') + '><a class="rowlink" href="#/u/' + esc(m.id) + '">' + av(m.bird, m.color, m.color2, 46) + '<span class="name"><b>' + esc(m.nickname) + '</b></span><span class="num">' + m.count + '<small>kare</small></span></a></li>';
+        return '<li' + (m.id === me() ? ' class="mine"' : '') + '><a class="rowlink" href="#/u/' + esc(m.id) + '">' + av(m.bird, m.color, m.color2, 56) + '<span class="name"><b>' + esc(m.nickname) + '</b></span><span class="num">' + m.count + '<small>kare</small></span></a></li>';
       }).join('');
     };
     members();
@@ -777,7 +777,7 @@
         var mine = st.profile ? (board.scope === 'kisi' ? st.profile.nickname : board.scope === 'okul' ? st.profile.school : board.scope === 'sehir' ? st.profile.city : st.team && st.team.name) : null;
         out.innerHTML = '<div class="thead"><span>Sıra</span><span>' + { kisi: 'Kişi', okul: 'Okul', sehir: 'Şehir', ekip: 'Ekip' }[board.scope] + '</span><span>Kare</span></div><ol class="rows ranked">' + rows.map(function (r, i) {
           var isMe = mine && trLow(mine) === trLow(r.label);
-          var inner = '<span class="rank">' + (i + 1) + '</span>' + (r.bird ? (r.uid && r.uid === me() && st.profile ? av(st.profile.bird, st.profile.color, st.profile.color2, 46) : av(r.bird, r.color, r.color2, 46)) : '') +
+          var inner = '<span class="rank">' + (i + 1) + '</span>' + (r.bird ? (r.uid && r.uid === me() && st.profile ? av(st.profile.bird, st.profile.color, st.profile.color2, 56) : av(r.bird, r.color, r.color2, 56)) : '') +
             '<span class="name"><b>' + esc(r.label) + '</b>' + (r.sub ? '<small>' + esc(r.sub) + '</small>' : '') + '</span><span class="num">' + r.total + '<small>' + hours(r.total) + ' saat</small></span>';
           return '<li' + (isMe ? ' class="mine"' : '') + '>' + (r.uid ? '<a class="rowlink" href="#/u/' + esc(r.uid) + '">' + inner + '</a>' : inner) + '</li>';
         }).join('') + '</ol>';
@@ -831,7 +831,7 @@
       $('fState').textContent = d ? 'Kaydedilmemiş değişiklikler var.' : '';
     }
     function prev() {
-      $('fAv').innerHTML = av(draft.bird, draft.color, draft.color2, 88);
+      $('fAv').innerHTML = av(draft.bird, draft.color, draft.color2, 120);
       $('fPrevName').textContent = $('fNick').value.trim() || 'Takma adın';
       $('fPrevBird').textContent = birdName(draft.bird);
       $('fRing').value = draft.color2 ? 'gradyan' : 'tek';
@@ -1176,7 +1176,7 @@
       if (!d) { v.innerHTML = head('Profil', 'Profil bulunamadı.') + '<a class="btn ghost" href="#/siralama">Sıralamaya dön</a>'; return; }
       if (d.private) { v.innerHTML = head('Profil', 'Bu profil gizli.', 'Kullanıcı profilini yalnızca kendisine açık tutuyor.') + '<a class="btn ghost" href="#/siralama">Sıralamaya dön</a>'; return; }
       var count = Math.floor((d.total || 0) / CELLS), items = d.seed ? collectionItems(d.seed, count) : [];
-      v.innerHTML = '<header class="phead pubhead">' + av(d.bird, d.color, d.color2, 116) + '<div><p class="kicker">' + esc([d.exam, d.city, d.school].filter(Boolean).join(' · ') || 'PixelTime') + '</p><h1>' + esc(d.nickname) + '</h1></div></header>' +
+      v.innerHTML = '<header class="phead pubhead">' + av(d.bird, d.color, d.color2, 144) + '<div><p class="kicker">' + esc([d.exam, d.city, d.school].filter(Boolean).join(' · ') || 'PixelTime') + '</p><h1>' + esc(d.nickname) + '</h1></div></header>' +
         '<section class="card"><dl class="stats"><div><dt>Kare</dt><dd>' + (d.total || 0) + '</dd></div><div><dt>Saat</dt><dd>' + hours(d.total || 0) + '</dd></div><div><dt>Portre</dt><dd>' + count + '</dd></div></dl></section>' +
         '<h2 class="sect">Koleksiyon</h2>' + (items.length ? '<section class="collection big">' + items.slice().reverse().map(function (it) { return figureHtml(it, false); }).join('') + '</section>' : '<p class="muted">Henüz tamamlanmış portre yok.</p>');
     };
