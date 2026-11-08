@@ -399,13 +399,28 @@
     if (ready) return ready;
     ready = client().then(function () { return sb.auth.getSession(); }).then(function (r) {
       user = r.data && r.data.session ? r.data.session.user : null;
-      if (user) return user;
+      if (user) return adopt(user).then(function () { return user; });
       if (noAnon) { ready = null; return null; }
-      return sb.auth.signInAnonymously().then(function (r2) { if (r2.error) throw r2.error; user = r2.data.user; return user; });
+      return sb.auth.signInAnonymously().then(function (r2) { if (r2.error) throw r2.error; user = r2.data.user; return adopt(user).then(function () { return user; }); });
     }).catch(function (e) { ready = null; throw e; });
     return ready;
   }
   function chk(r) { if (r.error) throw r.error; return r.data; }
+  /* Bu cihazdaki kayıtlar hangi hesaba ait? (st.uid). Oturum başka bir hesaba geçtiyse
+     (giriş, mail linki, şifre sıfırlama linki) eski hesabın verisi yeni hesaba karışmasın:
+     yerel kayıt sıfırlanır, yeni hesabınki sunucudan getirilir. */
+  function adopt(u) {
+    if (!u) return Promise.resolve(false);
+    if (!st.uid) { st.uid = u.id; if (u.email) st.email = u.email; save(); return Promise.resolve(false); }
+    if (st.uid === u.id) return Promise.resolve(false);
+    var keep = { sound: st.sound, goal: st.goal, pendingJoin: st.pendingJoin };
+    st = fresh(); for (var k in keep) st[k] = keep[k];
+    st.uid = u.id; st.email = u.email || null; REVEAL = revealFor(st.seed); save();
+    return restore().catch(function (e) { console.warn('geri yükleme', e); }).then(function () {
+      if (u.email) toast('Bu cihazda artık ' + u.email + ' hesabı açık.', 'good', 6000);
+      render(); return true;
+    });
+  }
   function pushProfile() {
     if (!st.profile) return Promise.resolve();
     return server().then(function () {
@@ -971,6 +986,16 @@
       return p.then(function (r) { if (r && r.error) throw r.error; return r; }).catch(function (e) { btn.disabled = false; btn.textContent = label || t; toast(authErr(e), 'bad', 5000); throw e; });
     }
     function bind(id, fn) { var b = $(id); b.addEventListener('click', function () { fn(b); }); m.querySelector('.sheet').addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); b.click(); } }); }
+    /* Bu cihazda başka bir hesap açıkken farklı e-postayla giriş: önce sor */
+    function switchOk(em) {
+      if (!user || (user.email && user.email.toLowerCase() === em)) return true;
+      if (user.email) return confirm('Bu cihazda şu an ' + user.email + ' hesabı açık.\n\n' + em + ' hesabına geçilsin mi? ' + user.email + ' hesabının kareleri kaybolmaz, sonra tekrar girebilirsin.');
+      var n = okBlocks().length;
+      if (!st.profile && !n) return true;
+      return confirm('Bu cihazdaki kayıtların (' + n + ' kare) henüz bir e-postaya bağlı değil. ' + em + ' hesabına geçersen bu kayıtlar o hesaba taşınmaz ve kaybolur.\n\nKorumak istiyorsan İptal de ve önce Profil → Hesabını kaydet ile yeni hesap aç. Yine de geçilsin mi?');
+    }
+    /* Geçmeden önce eski hesabın gönderilmemiş karelerini gönder */
+    function flush() { return user && user.email ? sync() : Promise.resolve(); }
     function code() { return ($('aCode').value || '').replace(/\D/g, ''); }
     /* Doğrulama kodu adımı: ok(code) kodu sunucuda doğrular */
     /* Mailde link varsa linke tıklanır; kod varsa kod yazılır. linkDone: linke tıklandıktan sonra burada devam etmek için. */
@@ -996,8 +1021,10 @@
     function signedIn(msg) {
       return sb.auth.getUser().then(function (r) {
         user = r.data && r.data.user || user; ready = Promise.resolve(user);
-        st.email = user && user.email || st.email; st.needPw = false; save();
-        return st.profile ? Promise.resolve(false) : restore();
+        return adopt(user).then(function (switched) {
+          st.email = user && user.email || st.email; st.needPw = false; save();
+          return switched || st.profile ? false : restore();
+        });
       }).then(function () { close(); toast(msg, 'good', 5000); render(); sync(); });
     }
 
@@ -1042,16 +1069,17 @@
         '<a href="#" data-go="forgot">Şifremi unuttum</a> · <a href="#" data-go="code">Şifresiz, mail linkiyle gir</a>');
       bind('aGo', function (b) {
         var em = readEmail(); if (!em) return; var pw = $('aPw').value; if (!pw) return toast('Şifreni yaz.', 'bad');
-        run(b, 'Giriş yap', client().then(function () { return sb.auth.signInWithPassword({ email: em, password: pw }); }))
+        if (!switchOk(em)) return;
+        run(b, 'Giriş yap', client().then(flush).then(function () { return sb.auth.signInWithPassword({ email: em, password: pw }); }))
           .then(function () { return signedIn('Tekrar hoş geldin.'); }).catch(function () {});
       });
     } else if (kind === 'code') {
       shell(AUTH_TITLES.code, '<p class="muted small">E-postana tek kullanımlık bir giriş linki gönderelim, şifresiz gir.</p>' + emailField() + '<button type="button" class="btn primary" id="aGo">Linki gönder</button>',
         '<a href="#" data-go="login">Şifreyle giriş</a>');
       bind('aGo', function (b) {
-        var em = readEmail(); if (!em) return;
+        var em = readEmail(); if (!em) return; if (!switchOk(em)) return;
         var send = function () { return sb.auth.signInWithOtp({ email: em, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname } }); };
-        run(b, 'Linki gönder', client().then(send)).then(function () {
+        run(b, 'Linki gönder', client().then(flush).then(send)).then(function () {
           codeStep('Mailine bak', '<b>' + esc(em) + '</b> adresine bir giriş linki gönderdik. Linke tıklayınca açılan sayfada giriş yapmış olursun. Mailde kod varsa aşağıya yaz.',
             function (c) { return sb.auth.verifyOtp({ email: em, token: c, type: 'email' }).then(function (r) { if (r.error) throw r.error; return signedIn('Tekrar hoş geldin.'); }); }, send);
         }).catch(function () {});
@@ -1060,9 +1088,9 @@
       shell(AUTH_TITLES.forgot, '<p class="muted small">E-postana bir link gönderelim. Linke tıklayınca yeni şifreni belirleyeceğin pencere açılır.</p>' + emailField() + '<button type="button" class="btn primary" id="aGo">Linki gönder</button>',
         '<a href="#" data-go="login">Girişe dön</a>');
       bind('aGo', function (b) {
-        var em = readEmail(); if (!em) return;
+        var em = readEmail(); if (!em) return; if (!switchOk(em)) return;
         var send = function () { return sb.auth.resetPasswordForEmail(em, { redirectTo: location.origin + location.pathname }); };
-        run(b, 'Linki gönder', client().then(send)).then(function () {
+        run(b, 'Linki gönder', client().then(flush).then(send)).then(function () {
           shell('Mailine bak', '<p class="muted small"><b>' + esc(em) + '</b> adresine bir link gönderdik. Linke tıkla, açılan sayfada yeni şifreni belirle.</p><details class="codebox"><summary>Mailde 6 haneli kod mu var?</summary>' + codeField() + pwFields('Yeni şifre', true) +
             '<button type="button" class="btn primary" id="aGo">Şifreyi değiştir</button></details>', '<a href="#" id="aResend">Linki tekrar gönder</a>');
           $('aResend').addEventListener('click', function (e) { e.preventDefault(); send().then(function (r) { if (r && r.error) throw r.error; toast('Tekrar gönderildi.', 'good'); }).catch(function (er) { toast(authErr(er), 'bad'); }); });
@@ -1088,7 +1116,11 @@
   function watchAuth() {
     if (!sb || watchAuth.on) return; watchAuth.on = true;
     sb.auth.onAuthStateChange(function (ev, session) {
-      if (session && session.user) { user = session.user; if (user.email && st.email !== user.email) { st.email = user.email; save(); } }
+      if (session && session.user) {
+        user = session.user;
+        if (st.uid && st.uid !== user.id) { var u = user; setTimeout(function () { ready = Promise.resolve(u); adopt(u).then(function () { sync(); }); }, 0); }
+        else if (user.email && st.email !== user.email) { st.email = user.email; save(); }
+      }
       if (ev === 'PASSWORD_RECOVERY') setTimeout(function () { authModal('password'); }, 300);
     });
   }
