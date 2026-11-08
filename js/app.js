@@ -888,11 +888,11 @@
     Object.keys(days).forEach(function (d) { if (days[d] > best) best = days[d]; });
     var streak = 0, cur = new Date(); if (!days[dayKey(cur)]) cur.setDate(cur.getDate() - 1);
     while (days[dayKey(cur)]) { streak++; cur.setDate(cur.getDate() - 1); }
-    return { total: b.length, hours: hours(b.length), best: best, streak: streak, birds: finishedCanvases(), fails: st.fails };
+    return { total: b.length, gift: okBlocks().length - b.length, hours: hours(b.length), best: best, streak: streak, birds: finishedCanvases(), fails: st.fails };
   }
   function statsBlock() {
     var s = stats();
-    return '<section class="card"><h2>Sezon ' + SEASON + '</h2><dl class="stats"><div><dt>Kare</dt><dd>' + s.total + '</dd></div><div><dt>Saat</dt><dd>' + s.hours + '</dd></div><div><dt>Seri</dt><dd>' + s.streak + '<small> gün</small></dd></div>' +
+    return '<section class="card"><h2>Sezon ' + SEASON + '</h2><dl class="stats"><div><dt>Kare</dt><dd>' + s.total + (s.gift ? '<small> +' + s.gift + ' hediye</small>' : '') + '</dd></div><div><dt>Saat</dt><dd>' + s.hours + '</dd></div><div><dt>Seri</dt><dd>' + s.streak + '<small> gün</small></dd></div>' +
       '<div><dt>En iyi gün</dt><dd>' + s.best + '</dd></div><div><dt>Portre</dt><dd>' + s.birds + '</dd></div><div><dt>Bozulan oturum</dt><dd>' + s.fails + '</dd></div></dl>' +
       '<button type="button" class="btn ghost" id="bCard">' + ICON.share + 'Sezon kartımı oluştur</button></section>';
   }
