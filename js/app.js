@@ -908,9 +908,22 @@
     return '<ul class="devs">' + l.map(function (d) {
       var seen = d.last_seen ? new Date(d.last_seen) : null;
       return '<li><b>' + esc(d.serial) + '</b><span>' + (seen ? 'Son bağlantı ' + seen.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' }) + ' ' + seen.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : 'Henüz internete bağlanmadı') +
-        ' · saatten ' + (d.blocks || 0) + ' kare (' + hours(d.blocks || 0) + ' saat)</span></li>';
+        ' · saatten ' + (d.blocks || 0) + ' kare (' + hours(d.blocks || 0) + ' saat)</span>' +
+        '<button type="button" class="btn quiet small" data-release="' + esc(d.serial) + '">Saati bu hesaptan kaldır</button></li>';
     }).join('') + '</ul>';
   }
+  /* Saati hesaptan kaldır: satış/hediye ya da başka hesaba bağlamak için. Kareler hesapta kalır. */
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-release]'); if (!b || !sb) return;
+    var serial = b.getAttribute('data-release');
+    if (!confirm(serial + ' bu hesaptan kaldırılsın mı?\n\nSaatten gelen kareler hesabında kalır. Saat, kodu girilerek başka bir hesaba bağlanabilir.')) return;
+    busy(b);
+    sb.rpc('release_device', { p_serial: serial }).then(chk).then(refreshDevices).then(function () {
+      st.pro = !!(st.devices && st.devices.length);
+      if (!st.pro && st.profile && st.profile.bird === 'pixel') { st.profile.bird = 'muhabbet'; st.profileSynced = false; }
+      save(); toast('Saat bu hesaptan kaldırıldı.', 'good'); render(); sync();
+    }).catch(function (er) { toast(errText(er), 'bad'); render(); });
+  });
   function proModal(preset) {
     var m = $('modal');
     m.innerHTML = '<div class="sheet form" role="dialog" aria-modal="true" aria-labelledby="mT"><button type="button" class="x" aria-label="Kapat">×</button><p class="label">PixelTime Saat</p><h2 id="mT">Saatini bağla</h2>' +
