@@ -55,7 +55,9 @@
   function hms(ms) { var s = Math.floor(Math.max(0, ms) / 1000), h = Math.floor(s / 3600); return (h ? h + ':' : '') + pad(Math.floor(s % 3600 / 60)) + ':' + pad(s % 60); }
   function dayKey(t) { var d = new Date(t); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
   function okBlocks() { return st.blocks.filter(function (b) { return !b.rejected; }); }
-  function todayCount() { var t = dayKey(Date.now()); return okBlocks().filter(function (b) { return dayKey(b.started_at) === t; }).length; }
+  /* Hediye kareler portreyi açar ama çalışma sayılmaz (saat, gün, seri hesabına girmez) */
+  function studyBlocks() { return okBlocks().filter(function (b) { return b.mode !== 'hediye'; }); }
+  function todayCount() { var t = dayKey(Date.now()); return studyBlocks().filter(function (b) { return dayKey(b.started_at) === t; }).length; }
   function hours(n) { return (n * 25 / 60).toFixed(1).replace('.', ',').replace(',0', ''); }
   function trLow(s) { return String(s || '').replace(/I/g, 'ı').replace(/İ/g, 'i').toLowerCase(); }
   function toast(msg, kind, ms) {
@@ -760,7 +762,7 @@
     });
     $('bExam').disabled = board.scope === 'ekip';
     var out = $('bList');
-    if (!SERVER) { out.innerHTML = '<p class="muted">Sıralamalar site sunucuya bağlandığında açılacak.' + (TEST ? ' Test modunda kapalı.' : '') + ' Şimdiye kadar <b>' + okBlocks().length + ' kare</b>, yani ' + hours(okBlocks().length) + ' saat çalıştın.</p>'; return; }
+    if (!SERVER) { out.innerHTML = '<p class="muted">Sıralamalar site sunucuya bağlandığında açılacak.' + (TEST ? ' Test modunda kapalı.' : '') + ' Şimdiye kadar <b>' + studyBlocks().length + ' kare</b>, yani ' + hours(studyBlocks().length) + ' saat çalıştın.</p>'; return; }
     out.innerHTML = '<p class="muted">Yükleniyor…</p>';
     var since = new Date(), d = since.getDay();
     if (board.period === 'hafta') { since.setDate(since.getDate() - (d === 0 ? 6 : d - 1)); since.setHours(0, 0, 0, 0); }
@@ -864,7 +866,11 @@
       dirty = null;
       st.profileSynced = false; save();
       if (SERVER) pushProfile().then(sync).catch(function (e) { console.warn(e); });
-      if (first) { go(st.pendingJoin && SERVER ? '#/ekip' : '#/'); if (!st.pixelSeen) pixelWelcome(); }
+      if (first) {
+        go(st.pendingJoin && SERVER ? '#/ekip' : '#/');
+        if (st.pendingClaim && SERVER) { st.pixelSeen = true; save(); setTimeout(function () { proModal(st.pendingClaim); }, 400); }
+        else if (!st.pixelSeen) pixelWelcome();
+      }
       else { toast('Profilin kaydedildi.', 'good'); render(); }
     });
     if ($('fLogin')) $('fLogin').addEventListener('click', function (e) { e.preventDefault(); authModal('login'); });
@@ -874,7 +880,7 @@
     prev();
   }
   function stats() {
-    var b = okBlocks(), days = {}, best = 0;
+    var b = studyBlocks(), days = {}, best = 0;
     b.forEach(function (x) { var d = dayKey(x.started_at); days[d] = (days[d] || 0) + 1; });
     Object.keys(days).forEach(function (d) { if (days[d] > best) best = days[d]; });
     var streak = 0, cur = new Date(); if (!days[dayKey(cur)]) cur.setDate(cur.getDate() - 1);
@@ -905,11 +911,11 @@
         ' · saatten ' + (d.blocks || 0) + ' kare (' + hours(d.blocks || 0) + ' saat)</span></li>';
     }).join('') + '</ul>';
   }
-  function proModal() {
+  function proModal(preset) {
     var m = $('modal');
     m.innerHTML = '<div class="sheet form" role="dialog" aria-modal="true" aria-labelledby="mT"><button type="button" class="x" aria-label="Kapat">×</button><p class="label">PixelTime Saat</p><h2 id="mT">Saatini bağla</h2>' +
       '<p class="muted small">Kod, saatin kutusundaki kartta ve saatin ekranında (Ayarlar → Bağlan) yazar. Saat bağlanınca çalışmaların kendiliğinden buraya gelir; Pixel\'in portresi ve Pixel profil kuşu açılır.</p>' +
-      '<div class="field"><label for="mCode">Kod</label><input type="text" id="mCode" autocapitalize="characters" class="code-in" maxlength="12"></div>' +
+      '<div class="field"><label for="mCode">Kod</label><input type="text" id="mCode" autocapitalize="characters" class="code-in" maxlength="12" value="' + esc(preset || '') + '"></div>' +
       (TEST ? '<p class="hint">Test modunda kod: PIXEL</p>' : '') + '<button type="button" class="btn primary" id="mGo">Kodu doğrula</button></div>';
     m.hidden = false;
     var close = function () { m.hidden = true; m.innerHTML = ''; };
@@ -922,8 +928,9 @@
       if (c.replace(/[^A-Z0-9]/g, '').length < 6) return toast('Kodu eksiksiz yaz.', 'bad');
       var btn = this; busy(btn);
       server().then(function () { return st.profileSynced ? null : pushProfile(); }).then(function () { return sb.rpc('claim_device', { p_code: c }); }).then(chk).then(function (r) {
-        st.pro = true; save(); close(); toast('Saatin bağlandı (' + r.serial + '). Pixel açıldı.', 'good', 5000);
-        refreshDevices().catch(function () {}).then(render);
+        st.pro = true; st.pendingClaim = null; save(); close();
+        toast(r.gift ? 'Saatin bağlandı. Hoş geldin hediyesi: ' + r.gift + ' kare açıldı!' : 'Saatin bağlandı (' + r.serial + '). Pixel açıldı.', 'good', 6000);
+        pullBlocks().catch(function () {}).then(refreshDevices).catch(function () {}).then(render);
       }).catch(function (e) {
         btn.disabled = false; btn.textContent = 'Kodu doğrula';
         var m = (e && e.message || '').toLowerCase();
@@ -1158,7 +1165,7 @@
         '<h2 class="sect">Koleksiyon</h2>' + (items.length ? '<section class="collection big">' + items.slice().reverse().map(function (it) { return figureHtml(it, false); }).join('') + '</section>' : '<p class="muted">Henüz tamamlanmış portre yok.</p>');
     };
     if (id === 'ben' || (user && id === user.id)) {
-      return paint({ nickname: st.profile.nickname, bird: st.profile.bird, color: st.profile.color, color2: st.profile.color2, exam: st.profile.exam, city: st.profile.city, school: st.profile.school, total: okBlocks().length, seed: st.seed });
+      return paint({ nickname: st.profile.nickname, bird: st.profile.bird, color: st.profile.color, color2: st.profile.color2, exam: st.profile.exam, city: st.profile.city, school: st.profile.school, total: studyBlocks().length, seed: st.seed });
     }
     if (!SERVER) return paint(null);
     v.innerHTML = '<p class="muted">Yükleniyor…</p>';
@@ -1384,6 +1391,13 @@
   /* ================= Başlat ================= */
   var q = location.search.match(/[?&]ekip=([A-Za-z0-9]{6})/);
   if (q) { st.pendingJoin = q[1].toUpperCase(); save(); if (!st.team) location.hash = '#/ekip'; }
+  /* Saatin ekranındaki / kutusundaki QR: ?saat=KOD → profil varsa bağlama penceresi kod dolu açılır */
+  var qs = location.search.match(/[?&]saat=([A-Za-z0-9-]{6,12})/);
+  if (qs) {
+    st.pendingClaim = qs[1].toUpperCase(); save();
+    history.replaceState(null, '', location.pathname + location.hash);
+    if (st.profile && SERVER) setTimeout(function () { proModal(st.pendingClaim); }, 600);
+  }
   if (TEST) {
     var tb = $('testbar'); tb.hidden = false;
     tb.innerHTML = '<span><b>Test modu</b> · kronometrede her saniye 1 kare · tuval 16 kare<span class="long"> · kayıtlar gerçek hesaptan ayrı</span></span><button type="button" id="tbOff">Kapat</button>';

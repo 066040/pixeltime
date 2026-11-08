@@ -113,7 +113,10 @@ create trigger profiles_guard before update on public.profiles
 -- ---------- Blok kaydı (hile önlemli) ----------
 -- Saatten gelen bloklar için mod 'saat'; hangi saatten geldiği device_id'de tutulur
 alter table public.blocks drop constraint if exists blocks_mode_check;
-alter table public.blocks add constraint blocks_mode_check check (mode in ('pomodoro', 'kronometre', 'saat'));
+alter table public.blocks add constraint blocks_mode_check check (mode in ('pomodoro', 'kronometre', 'saat', 'hediye'));
+-- Saat ilk bağlandığında verilen hediye kareler (mod 'hediye'): portreyi açar ama çalışma sayılmaz
+-- (sıralamaya, günlük sınıra, toplam saate girmez). Süresi sıfırdır, hiçbir blokla çakışmaz.
+alter table public.devices add column if not exists gift_given boolean not null default false;
 
 -- Tek bir bloğu kurallara göre ekler. Dönen değer: null = kabul, değilse ret sebebi.
 -- Hem siteden (record_blocks) hem saatten (device_record) gelen kayıtlar bu kapıdan geçer.
@@ -135,7 +138,7 @@ begin
   if exists (select 1 from blocks where user_id = me
              and tstzrange(started_at, ended_at, '[)') && tstzrange(s, e, '[)')) then return 'cakisma'; end if;
   -- günde en fazla 28 blok (~12 saat), Türkiye saatine göre
-  select count(*) into day_count from blocks where user_id = me
+  select count(*) into day_count from blocks where user_id = me and mode <> 'hediye'
     and (started_at at time zone 'Europe/Istanbul')::date = (s at time zone 'Europe/Istanbul')::date;
   if day_count >= 28 then return 'gunluk'; end if;
 
@@ -284,17 +287,17 @@ language sql stable security definer set search_path = public as $$
            case when p.is_public or p.id = auth.uid() then coalesce(p.city, '') else '' end,
            case when p.is_public or p.id = auth.uid() then p.bird end, p.color, p.color2, count(*)
       from blocks b join profiles p on p.id = b.user_id
-      where p_scope = 'kisi' and b.started_at >= p_since and (p_exam is null or p.exam = p_exam)
+      where p_scope = 'kisi' and b.mode <> 'hediye' and b.started_at >= p_since and (p_exam is null or p.exam = p_exam)
       group by p.id, p.nickname, p.city, p.bird, p.color, p.color2, p.is_public
     union all
     select null::uuid, min(trim(p.school)), min(coalesce(p.city, '')), null, null, null, count(*)
       from blocks b join profiles p on p.id = b.user_id
-      where p_scope = 'okul' and b.started_at >= p_since and nullif(trim(p.school), '') is not null and (p_exam is null or p.exam = p_exam)
+      where p_scope = 'okul' and b.mode <> 'hediye' and b.started_at >= p_since and nullif(trim(p.school), '') is not null and (p_exam is null or p.exam = p_exam)
       group by lower(trim(p.school))
     union all
     select null::uuid, p.city, null, null, null, null, count(*)
       from blocks b join profiles p on p.id = b.user_id
-      where p_scope = 'sehir' and b.started_at >= p_since and p.city is not null and (p_exam is null or p.exam = p_exam)
+      where p_scope = 'sehir' and b.mode <> 'hediye' and b.started_at >= p_since and p.city is not null and (p_exam is null or p.exam = p_exam)
       group by p.city
     union all
     select null::uuid, t.name, t.size || ' kişi', null, null, null, count(*)
@@ -319,7 +322,7 @@ begin
   if not p.is_public and p.id <> auth.uid() then return jsonb_build_object('private', true); end if;
   return jsonb_build_object('nickname', p.nickname, 'bird', p.bird, 'color', p.color, 'color2', p.color2,
     'exam', p.exam, 'city', p.city, 'school', p.school, 'seed', p.seed,
-    'total', (select count(*) from blocks b where b.user_id = p.id));
+    'total', (select count(*) from blocks b where b.user_id = p.id and b.mode <> 'hediye'));
 end $$;
 
 -- ---------- PixelTime Saat: eşleştirme ve saatten kayıt ----------
@@ -335,7 +338,15 @@ begin
   if d.id is null then raise exception 'saat bulunamadi'; end if;
   if d.owner is not null and d.owner <> auth.uid() then raise exception 'saat baska hesapta'; end if;
   update devices set owner = auth.uid(), claimed_at = coalesce(claimed_at, now()) where id = d.id;
-  return jsonb_build_object('serial', d.serial);
+  -- Hoş geldin hediyesi: her saat için bir kez, 6 kare
+  if not d.gift_given then
+    insert into blocks (user_id, client_id, started_at, ended_at, mode, device_id)
+      select auth.uid(), 'hediye-' || d.serial || '-' || i, now(), now(), 'hediye', d.id from generate_series(1, 6) i
+      on conflict (user_id, client_id) do nothing;
+    update devices set gift_given = true where id = d.id;
+    return jsonb_build_object('serial', d.serial, 'gift', 6);
+  end if;
+  return jsonb_build_object('serial', d.serial, 'gift', 0);
 end $$;
 
 -- Sitede "Saatim" kartı için: bu hesaba bağlı saatler ve saatten gelen kare sayısı
@@ -343,7 +354,7 @@ create or replace function public.my_devices()
 returns jsonb
 language sql stable security definer set search_path = public as $$
   select coalesce(jsonb_agg(jsonb_build_object('serial', d.serial, 'fw', d.fw, 'last_seen', d.last_seen, 'claimed_at', d.claimed_at,
-    'blocks', (select count(*) from blocks b where b.device_id = d.id)) order by d.claimed_at), '[]'::jsonb)
+    'blocks', (select count(*) from blocks b where b.device_id = d.id and b.mode <> 'hediye')) order by d.claimed_at), '[]'::jsonb)
   from devices d where d.owner = auth.uid();
 $$;
 
