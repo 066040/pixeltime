@@ -13,7 +13,7 @@
 
   Gerekenler (Arduino IDE → Kütüphane Yöneticisi):
    - WiFiManager (tzapu)        - ArduinoJson (Benoit Blanchon, 7.x)
-  Kart: "ESP32C3 Dev Module", USB CDC On Boot: Enabled
+  Kart: "ESP32C3 Dev Module" (Super Mini da bu), USB CDC On Boot: Enabled
 
   Kurulum:
    1) python3 tools/yeni_saat.py PT-0001  → cihaz_kimligi.h oluşur, SQL satırını Supabase'de çalıştır
@@ -43,6 +43,7 @@ int qn = 0;
 uint32_t nextId = 1;
 uint32_t lastSync = 0;
 bool timeOk = false;
+uint32_t testEnd = 0;   // deneme: her basış bir öncekinin hemen öncesine 25 dk'lık blok ekler (çakışma olmasın)
 
 // ---------- Hafıza (kapanınca silinmez) ----------
 void loadQueue() {
@@ -140,6 +141,8 @@ void setup() {
   loadQueue();
   Serial.printf("\nPixelTime Saat %s · %s · eşleştirme kodu %s · %d blok bekliyor\n", PT_SERIAL, PT_FW_VERSION, PT_CLAIM_CODE, qn);
 
+  WiFi.mode(WIFI_STA);
+  WiFi.setTxPower(WIFI_POWER_8_5dBm);        // Super Mini kartlarda tam güçte Wi-Fi'ye bağlanamama sorunu var
   WiFiManager wm;
   wm.setConfigPortalTimeout(180);            // 3 dk içinde kurulmazsa çevrimdışı devam
   String ap = String("PixelTime-") + String(PT_SERIAL).substring(3);
@@ -156,7 +159,11 @@ void loop() {
   bool now = digitalRead(BTN_PIN);
   if (last == HIGH && now == LOW) {
     if (!timeOk) Serial.println("Önce saat ayarlanmalı (Wi-Fi gerekli). Gerçek saatte RTC (RV-3028) bu işi görür.");
-    else { uint32_t e = time(nullptr); queueBlock(e - BLOCK_SEC, e); syncNow(); lastSync = millis(); }
+    else {
+      uint32_t e = testEnd ? testEnd : (uint32_t)time(nullptr);
+      queueBlock(e - BLOCK_SEC, e); testEnd = e - BLOCK_SEC;
+      syncNow(); lastSync = millis();
+    }
     delay(250);
   }
   last = now;
