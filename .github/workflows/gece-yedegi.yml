@@ -1,0 +1,42 @@
+# Her gece veritabanının yedeğini alır, şifreleyip 30 gün saklar.
+# Gerekli gizli bilgiler (Settings → Secrets and variables → Actions):
+#   SUPABASE_DB_URL  : Supabase → Connect → "Session pooler" bağlantı adresi (şifre içinde yazılı olarak)
+#   YEDEK_SIFRESI    : Yedeği açmak için kendi belirlediğin uzun bir şifre. Bunu kaybetme!
+# Yedek, repo herkese açık olduğu için şifreli saklanır (içinde kullanıcı e-postaları var).
+name: Gece yedeği
+
+on:
+  schedule:
+    - cron: '23 0 * * *'   # her gece 03:23 (TR)
+  workflow_dispatch: {}
+
+jobs:
+  yedek:
+    runs-on: ubuntu-latest
+    steps:
+      - name: PostgreSQL 17 istemcisini kur
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+      - name: Yedek al ve şifrele
+        env:
+          DB: ${{ secrets.SUPABASE_DB_URL }}
+          PASS: ${{ secrets.YEDEK_SIFRESI }}
+        run: |
+          test -n "$DB" -a -n "$PASS" || { echo '::error::SUPABASE_DB_URL ve YEDEK_SIFRESI gizli bilgileri eklenmemiş.'; exit 1; }
+          PG=/usr/lib/postgresql/17/bin
+          T=$(date -u +%Y-%m-%d)
+          mkdir yedek
+          # Sitenin tabloları ve fonksiyonları (yapı + veri)
+          $PG/pg_dump "$DB" -n public --no-owner --no-privileges -f yedek/public.sql
+          # Hesaplar (sadece veri; geri yüklerken yeni projenin auth tablolarına yazılır)
+          $PG/pg_dump "$DB" -n auth --data-only --no-owner -t auth.users -t auth.identities -f yedek/auth_kullanicilar.sql
+          tar czf - yedek | gpg --batch --yes --pinentry-mode loopback --passphrase "$PASS" --symmetric --cipher-algo AES256 -o "pixeltime-yedek-$T.tar.gz.gpg"
+          ls -lh pixeltime-yedek-*.gpg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pixeltime-yedek
+          path: pixeltime-yedek-*.gpg
+          retention-days: 30

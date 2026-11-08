@@ -1,0 +1,25 @@
+# Supabase ücretsiz projesi bir hafta hiç kullanılmazsa duraklatılır.
+# Bu görev 3 günde bir veritabanına küçük bir istek atar. Gizli bilgi gerektirmez:
+# sitedeki herkese açık anahtarı kullanır ve var olmayan bir saati sorar.
+name: Supabase uyanık tut
+
+on:
+  schedule:
+    - cron: '17 6 */3 * *'   # 3 günde bir, 09:17 (TR)
+  workflow_dispatch: {}       # Actions sekmesinden elle de çalıştırılabilir
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Veritabanına dokun
+        run: |
+          URL=$(grep -o "supabaseUrl: *'[^']*'" js/config.js | cut -d"'" -f2)
+          KEY=$(grep -o "supabaseKey: *'[^']*'" js/config.js | cut -d"'" -f2)
+          OUT=$(curl -s -w '\n%{http_code}' -X POST "$URL/rest/v1/rpc/device_record" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+            -d '{"p_serial":"PING","p_ts":0,"p_blocks":[],"p_sig":""}')
+          echo "$OUT"
+          # Beklenen cevap: "saat bulunamadi" (veritabanı çalıştı demektir)
+          echo "$OUT" | grep -q 'saat bulunamadi' || { echo '::error::Supabase beklenen cevabı vermedi. Proje duraklatılmış olabilir, panelden kontrol et.'; exit 1; }
